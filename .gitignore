@@ -41,3 +41,9 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Plugin Signing Certificates ###
+# NEVER commit these files - they are used for signing the plugin
+chain.crt
+private.pem
+private_encrypted.pem

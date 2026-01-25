@@ -8,7 +8,7 @@
     <name>Git Worktree Manager</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor url="https://github.com/ming">PurringLabs</vendor>
+    <vendor email="purringlabs@gmail.com" url="https://github.com/MingLu0">Purring Labs</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->

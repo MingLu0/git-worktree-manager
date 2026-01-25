@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -37,8 +37,26 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Initial version
+            Initial release of Git Worktree Manager
+
+            Features:
+            - Create worktrees with automatic branch creation
+            - List all worktrees with branch and commit info
+            - Delete worktrees with confirmation dialog
+            - Auto-open worktrees in new IDE windows
+            - Modern Compose UI with Git branch icon
+            - Compatible with Kotlin K2 mode
         """.trimIndent()
+    }
+
+    signing {
+        certificateChainFile = file("chain.crt")
+        privateKeyFile = file("private.pem")
+        password = providers.environmentVariable("PLUGIN_SIGNING_PASSWORD")
+    }
+
+    publishing {
+        token = providers.environmentVariable("INTELLIJ_PLATFORM_PUBLISHING_TOKEN")
     }
 }
 
