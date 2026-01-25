@@ -111,7 +111,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Author
 
-Built with ❤️ by Purring Labs
+Built with ❤️ by PurringLabs - Ming Luo 
 
 ## Acknowledgments
 
