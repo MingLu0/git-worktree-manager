@@ -34,6 +34,12 @@
     <depends>org.jetbrains.kotlin</depends>
     <depends>Git4Idea</depends>
     <resource-bundle>messages.MyMessageBundle</resource-bundle>
+
+    <!-- Declare K2 mode compatibility -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
+    </extensions>
+
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
