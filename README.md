@@ -81,13 +81,47 @@ Each worktree:
 - IntelliJ IDEA 2025.2+ or Android Studio with equivalent platform version
 - Git 2.5+ (for worktree support)
 
+## Architecture
+
+This plugin follows clean architecture principles with clear separation of concerns:
+
+### Layer Structure
+
+```
+UI Layer (Composables)
+    ↓
+Presentation Layer (ViewModel)
+    ↓
+Data Layer (Repository)
+    ↓
+Platform Services (GitWorktreeService)
+```
+
+### Components
+
+- **WorktreeState**: Immutable data class representing UI state (worktrees list, loading state, errors)
+- **WorktreeRepository**: Data access layer that wraps GitWorktreeService and handles Git repository operations
+- **WorktreeViewModel**: Presentation logic layer that manages state and coordinates between Repository and UI
+- **Pure Composables**: UI components with no dependencies on IntelliJ Platform APIs, making them testable and maintainable
+
+### Design Principles
+
+- **Separation of Concerns**: UI, presentation logic, and data access are clearly separated
+- **Dependency Inversion**: UI depends on abstractions (callbacks) rather than concrete implementations
+- **JetBrains Best Practices**: Follows official IntelliJ Platform patterns for service management and dependency injection
+- **Testability**: Pure UI functions can be tested with mock data, ViewModels can be tested independently
+
+This architecture makes the codebase maintainable, testable, and follows IntelliJ Platform best practices for plugin development.
+
 ## Development
 
 This plugin is built with:
-- Kotlin
-- IntelliJ Platform SDK
-- Jetpack Compose for Desktop (Jewel)
-- Git4Idea (IntelliJ's Git integration API)
+- **Kotlin**: Primary programming language
+- **IntelliJ Platform SDK**: Plugin framework
+- **Jetpack Compose for Desktop (Jewel)**: Modern declarative UI
+- **Git4Idea**: IntelliJ's Git integration API
+- **Coroutines**: Asynchronous operations and state management
+- **Clean Architecture**: ViewModel + Repository pattern for separation of concerns
 
 ### Building
 
