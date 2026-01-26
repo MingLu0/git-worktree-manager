@@ -15,8 +15,8 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import java.io.File
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
-import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
-import git4idea.repo.GitRepositoryManager
+import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,35 +29,123 @@ class MyToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         toolWindow.addComposeTab("Git Worktrees", focusOnClickInside = true) {
-            WorktreeListContent(project)
+            WorktreeManagerContent(project)
         }
     }
 }
 
+/**
+ * Wrapper composable that holds the Project reference and manages the ViewModel
+ * This is the only composable that knows about Project and IntelliJ Platform APIs
+ */
 @Composable
-private fun WorktreeListContent(project: Project) {
-    var worktrees by remember { mutableStateOf<List<WorktreeInfo>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+private fun WorktreeManagerContent(project: Project) {
     val coroutineScope = rememberCoroutineScope()
+    val viewModel = remember { WorktreeViewModel(project, coroutineScope) }
 
-    fun refreshWorktrees() {
-        coroutineScope.launch(Dispatchers.IO) {
-            isLoading = true
-            val repositoryManager = GitRepositoryManager.getInstance(project)
-            val repository = repositoryManager.repositories.firstOrNull()
-
-            if (repository != null) {
-                val service = GitWorktreeService.getInstance(project)
-                worktrees = service.listWorktrees(repository)
-            }
-            isLoading = false
-        }
-    }
-
+    // Initialize data on first composition
     LaunchedEffect(Unit) {
-        refreshWorktrees()
+        viewModel.refreshWorktrees()
     }
 
+    WorktreeListContent(
+        state = viewModel.state,
+        onRefresh = {
+            viewModel.refreshWorktrees()
+        },
+        onCreateWorktree = { name, branch ->
+            viewModel.createWorktree(
+                name = name,
+                branchName = branch,
+                onSuccess = { worktreePath ->
+                    coroutineScope.launch(Dispatchers.Main) {
+                        // Open the worktree in a new window
+                        ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                        Messages.showInfoMessage(
+                            project,
+                            "Worktree created and opened in new window!",
+                            "Success"
+                        )
+                    }
+                },
+                onError = { errorMessage ->
+                    coroutineScope.launch(Dispatchers.Main) {
+                        Messages.showErrorDialog(
+                            project,
+                            errorMessage,
+                            "Error"
+                        )
+                    }
+                }
+            )
+        },
+        onDeleteWorktree = { worktree ->
+            viewModel.deleteWorktree(
+                worktreePath = worktree.path,
+                onSuccess = {
+                    coroutineScope.launch(Dispatchers.Main) {
+                        Messages.showInfoMessage(
+                            project,
+                            "Worktree deleted successfully!",
+                            "Success"
+                        )
+                    }
+                },
+                onError = { errorMessage ->
+                    coroutineScope.launch(Dispatchers.Main) {
+                        Messages.showErrorDialog(
+                            project,
+                            errorMessage,
+                            "Error"
+                        )
+                    }
+                }
+            )
+        },
+        onRequestWorktreeName = {
+            Messages.showInputDialog(
+                project,
+                "Enter worktree name:",
+                "Create Worktree",
+                null
+            )
+        },
+        onRequestBranchName = { defaultName ->
+            Messages.showInputDialog(
+                project,
+                "Enter branch name:",
+                "Create Worktree",
+                null,
+                defaultName,
+                null
+            )
+        },
+        onConfirmDelete = { worktree ->
+            val result = Messages.showYesNoDialog(
+                project,
+                "Are you sure you want to delete this worktree?\n${worktree.path}",
+                "Delete Worktree",
+                Messages.getWarningIcon()
+            )
+            result == Messages.YES
+        }
+    )
+}
+
+/**
+ * Pure UI composable for displaying the worktree list
+ * No dependency on Project - can be previewed with mock data
+ */
+@Composable
+private fun WorktreeListContent(
+    state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
+    onRefresh: () -> Unit,
+    onCreateWorktree: (name: String, branch: String) -> Unit,
+    onDeleteWorktree: (WorktreeInfo) -> Unit,
+    onRequestWorktreeName: () -> String?,
+    onRequestBranchName: (defaultName: String) -> String?,
+    onConfirmDelete: (WorktreeInfo) -> Boolean
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -66,67 +154,35 @@ private fun WorktreeListContent(project: Project) {
     ) {
         // Create button at the top
         OutlinedButton(onClick = {
-            val worktreeName = Messages.showInputDialog(
-                project,
-                "Enter worktree name:",
-                "Create Worktree",
-                null
-            )
+            val worktreeName = onRequestWorktreeName()
             if (!worktreeName.isNullOrBlank()) {
-                val branchName = Messages.showInputDialog(
-                    project,
-                    "Enter branch name:",
-                    "Create Worktree",
-                    null,
-                    worktreeName,
-                    null
-                )
+                val branchName = onRequestBranchName(worktreeName)
                 if (!branchName.isNullOrBlank()) {
-                    coroutineScope.launch(Dispatchers.IO) {
-                        val repositoryManager = GitRepositoryManager.getInstance(project)
-                        val repository = repositoryManager.repositories.firstOrNull()
-
-                        if (repository != null) {
-                            val service = GitWorktreeService.getInstance(project)
-                            val success = service.createWorktree(repository, worktreeName, branchName)
-
-                            withContext(Dispatchers.Main) {
-                                if (success) {
-                                    // Open the worktree in a new window
-                                    val worktreePath = service.getWorktreePath(repository, worktreeName)
-                                    ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
-
-                                    Messages.showInfoMessage(
-                                        project,
-                                        "Worktree created and opened in new window!",
-                                        "Success"
-                                    )
-                                    refreshWorktrees()
-                                } else {
-                                    Messages.showErrorDialog(
-                                        project,
-                                        "Failed to create worktree. Check if the branch name already exists.",
-                                        "Error"
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    onCreateWorktree(worktreeName, branchName)
                 }
             }
         }) {
             Text("Create Worktree")
         }
 
+        // Error message
+        state.error?.let { error ->
+            Text(
+                text = error,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(8.dp)
+            )
+        }
+
         // Worktree list
-        if (isLoading) {
+        if (state.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Text("Loading worktrees...")
             }
-        } else if (worktrees.isEmpty()) {
+        } else if (state.worktrees.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -137,36 +193,12 @@ private fun WorktreeListContent(project: Project) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(worktrees) { worktree ->
+                items(state.worktrees) { worktree ->
                     WorktreeItem(
                         worktree = worktree,
-                        project = project,
-                        onDelete = { worktreeToDelete ->
-                            coroutineScope.launch(Dispatchers.IO) {
-                                val repositoryManager = GitRepositoryManager.getInstance(project)
-                                val repository = repositoryManager.repositories.firstOrNull()
-
-                                if (repository != null) {
-                                    val service = GitWorktreeService.getInstance(project)
-                                    val success = service.deleteWorktree(repository, worktreeToDelete.path)
-
-                                    withContext(Dispatchers.Main) {
-                                        if (success) {
-                                            Messages.showInfoMessage(
-                                                project,
-                                                "Worktree deleted successfully!",
-                                                "Success"
-                                            )
-                                            refreshWorktrees()
-                                        } else {
-                                            Messages.showErrorDialog(
-                                                project,
-                                                "Failed to delete worktree.",
-                                                "Error"
-                                            )
-                                        }
-                                    }
-                                }
+                        onDelete = {
+                            if (onConfirmDelete(worktree)) {
+                                onDeleteWorktree(worktree)
                             }
                         }
                     )
@@ -176,11 +208,14 @@ private fun WorktreeListContent(project: Project) {
     }
 }
 
+/**
+ * Pure UI composable for displaying a single worktree item
+ * No dependency on Project - can be previewed with mock data
+ */
 @Composable
 private fun WorktreeItem(
     worktree: WorktreeInfo,
-    project: Project,
-    onDelete: (WorktreeInfo) -> Unit
+    onDelete: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -217,17 +252,7 @@ private fun WorktreeItem(
 
         // Delete button (only show for non-main worktrees)
         if (!worktree.isMain) {
-            OutlinedButton(onClick = {
-                val result = Messages.showYesNoDialog(
-                    project,
-                    "Are you sure you want to delete this worktree?\n${worktree.path}",
-                    "Delete Worktree",
-                    Messages.getWarningIcon()
-                )
-                if (result == Messages.YES) {
-                    onDelete(worktree)
-                }
-            }) {
+            OutlinedButton(onClick = onDelete) {
                 Text("Delete")
             }
         }
