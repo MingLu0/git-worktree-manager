@@ -47,6 +47,6 @@
                     displayName="Git Worktrees"
                     factoryClass="com.purringlabs.gitworktree.gitworktreemanager.MyToolWindowFactory"
                     anchor="bottom"
-                    icon="AllIcons.Vcs.Branch"/>
+                    icon="/META-INF/pluginIcon.svg"/>
     </extensions>
 </idea-plugin>

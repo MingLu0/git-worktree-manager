@@ -1,12 +1,20 @@
 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M32.0845 7.94025V4H24.0203V7.9896H16.029V4H7.91553V7.94025H4V36H16.0044V32.0045C16.0058 30.9457 16.4274 29.9308 17.1766 29.1826C17.9258 28.4345 18.9412 28.0143 20 28.0143C21.0588 28.0143 22.0743 28.4345 22.8234 29.1826C23.5726 29.9308 23.9942 30.9457 23.9956 32.0045V36H36V7.94025H32.0845Z"
-          fill="url(#paint0_linear)"/>
-    <defs>
-        <linearGradient id="paint0_linear" x1="2.94192" y1="4.89955" x2="37.7772" y2="39.7345"
-                        gradientUnits="userSpaceOnUse">
-            <stop offset="0.15937" stop-color="#3BEA62"/>
-            <stop offset="0.5404" stop-color="#3C99CC"/>
-            <stop offset="0.93739" stop-color="#6B57FF"/>
-        </linearGradient>
-    </defs>
+    <circle cx="10" cy="20" r="5" fill="#FF6B6B"/>
+    <circle cx="10" cy="20" r="2" fill="white"/>
+    
+    <path d="M10 20 C 10 16, 13 12, 17 12 H 26 M 10 20 C 10 24, 13 28, 17 28 H 26" stroke="#E8D0B3" stroke-width="3" stroke-linecap="round" fill="none"/>
+    
+    <g transform="translate(24, 5)">
+        <path d="M2 2 H 12 C 13.1 2 14 2.9 14 4 V 10 C 14 11.1 13.1 12 12 12 H 2 C 0.9 12 0 11.1 0 10 V 4 C 0 2.9 0.9 2 2 2 Z" fill="#7EB6FF"/>
+        <circle cx="4" cy="6" r="0.8" fill="#4A4A4A"/>
+        <circle cx="10" cy="6" r="0.8" fill="#4A4A4A"/>
+        <path d="M5.5 8.5 C 6 9 8 9 8.5 8.5" stroke="#FF9E9E" stroke-width="0.8" stroke-linecap="round"/>
+    </g>
+    
+    <g transform="translate(24, 21)">
+        <path d="M2 2 H 12 C 13.1 2 14 2.9 14 4 V 10 C 14 11.1 13.1 12 12 12 H 2 C 0.9 12 0 11.1 0 10 V 4 C 0 2.9 0.9 2 2 2 Z" fill="#7EB6FF"/>
+        <circle cx="4" cy="6" r="0.8" fill="#4A4A4A"/>
+        <circle cx="10" cy="6" r="0.8" fill="#4A4A4A"/>
+        <path d="M5.5 8.5 C 6 9 8 9 8.5 8.5" stroke="#FF9E9E" stroke-width="0.8" stroke-linecap="round"/>
+    </g>
 </svg>
