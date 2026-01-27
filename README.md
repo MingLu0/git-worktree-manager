@@ -30,9 +30,10 @@ Read more about the benefits: [Increase Productivity with Git Worktrees](https:/
 2. Run `./gradlew build`
 3. Install the plugin from `build/distributions/git-worktree-manager-*.zip`
 
-### From Marketplace (Coming Soon)
+### From Marketplace 
 
 Search for "Git Worktree Manager" in the IntelliJ Plugin Marketplace.
+https://plugins.jetbrains.com/plugin/29905-git-worktree-manager?noRedirect=true
 
 ## Usage
 
