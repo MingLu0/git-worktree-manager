@@ -47,3 +47,10 @@ bin/
 chain.crt
 private.pem
 private_encrypted.pem
+
+### Local/dev artifacts (do not commit) ###
+.cursor/
+build_output.log
+.intellijPlatform/self-update.lock
+.claude/settings.local.json
+.idea/inspectionProfiles/

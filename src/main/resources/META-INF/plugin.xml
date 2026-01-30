@@ -21,6 +21,7 @@
         <ul>
             <li>Create new worktrees with automatic branch creation</li>
             <li>View all worktrees in a convenient tool window</li>
+            <li>Optionally copy selected ignored files into the new worktree</li>
             <li>Delete worktrees with one click</li>
             <li>Automatically open worktrees in new IDE windows</li>
         </ul>

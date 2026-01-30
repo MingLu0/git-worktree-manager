@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.3"
+version = "1.0.4"
 
 repositories {
     mavenCentral()
@@ -37,9 +37,11 @@ intellijPlatform {
         }
 
         changeNotes = """
+            New:
+            - Optionally copy gitignored files into new worktrees (with selection dialog)
+
             Fixes:
-            - Make Compose and Kotlin dependencies optional for IDEs that do not bundle them
-            - Keep K2 support when Kotlin plugin is present
+            - Fix first-run ignored-files scan race by awaiting scan completion
         """.trimIndent()
     }
 

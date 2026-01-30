@@ -9,12 +9,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.intellij.ide.impl.ProjectUtil
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import java.io.File
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
+import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
+import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
+import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
+import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
+import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +47,15 @@ class MyToolWindowFactory : ToolWindowFactory {
 @Composable
 private fun WorktreeManagerContent(project: Project) {
     val coroutineScope = rememberCoroutineScope()
-    val viewModel = remember { WorktreeViewModel(project, coroutineScope) }
+    val viewModel = remember {
+        WorktreeViewModel(
+            project = project,
+            coroutineScope = coroutineScope,
+            repository = WorktreeRepository(project),
+            ignoredFilesService = IgnoredFilesService.getInstance(project),
+            fileOpsService = FileOperationsService.getInstance(project)
+        )
+    }
 
     // Initialize data on first composition
     LaunchedEffect(Unit) {
@@ -58,7 +72,7 @@ private fun WorktreeManagerContent(project: Project) {
                 name = name,
                 branchName = branch,
                 onSuccess = { worktreePath ->
-                    coroutineScope.launch(Dispatchers.Main) {
+                    ApplicationManager.getApplication().invokeLater {
                         // Open the worktree in a new window
                         ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
                         Messages.showInfoMessage(
@@ -69,7 +83,7 @@ private fun WorktreeManagerContent(project: Project) {
                     }
                 },
                 onError = { errorMessage ->
-                    coroutineScope.launch(Dispatchers.Main) {
+                    ApplicationManager.getApplication().invokeLater {
                         Messages.showErrorDialog(
                             project,
                             errorMessage,
@@ -79,11 +93,139 @@ private fun WorktreeManagerContent(project: Project) {
                 }
             )
         },
+        onCreateWorktreeWithIgnoredFiles = { name, branch ->
+            coroutineScope.launch {
+                // Step 1: Scan for ignored files
+                viewModel.scanIgnoredFiles()
+
+                // Step 2: Check for scan errors
+                if (viewModel.state.scanError != null) {
+                    withContext(Dispatchers.Main) {
+                        Messages.showErrorDialog(
+                            project,
+                            "Failed to scan ignored files: ${viewModel.state.scanError}",
+                            "Error"
+                        )
+                    }
+                    return@launch
+                }
+
+                // Step 3: Show selection dialog
+                val ignoredFiles = viewModel.state.ignoredFiles
+                if (ignoredFiles.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Messages.showInfoMessage(
+                            project,
+                            "No ignored files found.",
+                            "No Ignored Files"
+                        )
+                    }
+                    // Still create the worktree without copying files
+                    viewModel.createWorktree(
+                        name = name,
+                        branchName = branch,
+                        onSuccess = { worktreePath ->
+                            ApplicationManager.getApplication().invokeLater {
+                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                                Messages.showInfoMessage(
+                                    project,
+                                    "Worktree created and opened in new window!",
+                                    "Success"
+                                )
+                            }
+                        },
+                        onError = { errorMessage ->
+                            ApplicationManager.getApplication().invokeLater {
+                                Messages.showErrorDialog(
+                                    project,
+                                    errorMessage,
+                                    "Error"
+                                )
+                            }
+                        }
+                    )
+                    return@launch
+                }
+
+                // Show dialog on main thread
+                val selectedFiles = withContext(Dispatchers.Main) {
+                    val dialog = IgnoredFilesSelectionDialog(project, ignoredFiles)
+                    if (dialog.showAndGet()) {
+                        dialog.getSelectedFiles()
+                    } else {
+                        null // User cancelled
+                    }
+                }
+
+                // Step 4: Create worktree with or without selected files
+                if (selectedFiles != null) {
+                    // User selected files - create worktree with copying
+                    viewModel.createWorktreeWithIgnoredFiles(
+                        worktreeName = name,
+                        branchName = branch,
+                        selectedFiles = selectedFiles,
+                        onSuccess = { worktreePath ->
+                            ApplicationManager.getApplication().invokeLater {
+                                // Open the worktree in a new window
+                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+
+                                // Show copy results if available
+                                val copyResult = viewModel.state.copyResult
+                                if (copyResult != null && copyResult.successCount > 0) {
+                                    val resultDialog = CopyResultDialog(project, copyResult)
+                                    resultDialog.show()
+                                }
+
+                                Messages.showInfoMessage(
+                                    project,
+                                    "Worktree created and opened in new window!",
+                                    "Success"
+                                )
+                            }
+                        },
+                        onError = { errorMessage ->
+                            ApplicationManager.getApplication().invokeLater {
+                                Messages.showErrorDialog(
+                                    project,
+                                    errorMessage,
+                                    "Error"
+                                )
+                            }
+                        }
+                    )
+                } else {
+                    // User cancelled selection - create worktree without copying files
+                    viewModel.createWorktree(
+                        name = name,
+                        branchName = branch,
+                        onSuccess = { worktreePath ->
+                            ApplicationManager.getApplication().invokeLater {
+                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                                Messages.showInfoMessage(
+                                    project,
+                                    "Worktree created and opened in new window!",
+                                    "Success"
+                                )
+                            }
+                        },
+                        onError = { errorMessage ->
+                            ApplicationManager.getApplication().invokeLater {
+                                Messages.showErrorDialog(
+                                    project,
+                                    errorMessage,
+                                    "Error"
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+        },
         onDeleteWorktree = { worktree ->
             viewModel.deleteWorktree(
                 worktreePath = worktree.path,
                 onSuccess = {
-                    coroutineScope.launch(Dispatchers.Main) {
+                    ApplicationManager.getApplication().invokeLater {
                         Messages.showInfoMessage(
                             project,
                             "Worktree deleted successfully!",
@@ -92,7 +234,7 @@ private fun WorktreeManagerContent(project: Project) {
                     }
                 },
                 onError = { errorMessage ->
-                    coroutineScope.launch(Dispatchers.Main) {
+                    ApplicationManager.getApplication().invokeLater {
                         Messages.showErrorDialog(
                             project,
                             errorMessage,
@@ -128,6 +270,15 @@ private fun WorktreeManagerContent(project: Project) {
                 Messages.getWarningIcon()
             )
             result == Messages.YES
+        },
+        onRequestCopyIgnoredFiles = {
+            val result = Messages.showYesNoDialog(
+                project,
+                "Do you want to copy ignored files to the new worktree?",
+                "Copy Ignored Files",
+                Messages.getQuestionIcon()
+            )
+            result == Messages.YES
         }
     )
 }
@@ -141,10 +292,12 @@ private fun WorktreeListContent(
     state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
     onRefresh: () -> Unit,
     onCreateWorktree: (name: String, branch: String) -> Unit,
+    onCreateWorktreeWithIgnoredFiles: (name: String, branch: String) -> Unit,
     onDeleteWorktree: (WorktreeInfo) -> Unit,
     onRequestWorktreeName: () -> String?,
     onRequestBranchName: (defaultName: String) -> String?,
-    onConfirmDelete: (WorktreeInfo) -> Boolean
+    onConfirmDelete: (WorktreeInfo) -> Boolean,
+    onRequestCopyIgnoredFiles: () -> Boolean
 ) {
     Column(
         modifier = Modifier
@@ -158,7 +311,12 @@ private fun WorktreeListContent(
             if (!worktreeName.isNullOrBlank()) {
                 val branchName = onRequestBranchName(worktreeName)
                 if (!branchName.isNullOrBlank()) {
-                    onCreateWorktree(worktreeName, branchName)
+                    val copyIgnoredFiles = onRequestCopyIgnoredFiles()
+                    if (copyIgnoredFiles) {
+                        onCreateWorktreeWithIgnoredFiles(worktreeName, branchName)
+                    } else {
+                        onCreateWorktree(worktreeName, branchName)
+                    }
                 }
             }
         }) {
