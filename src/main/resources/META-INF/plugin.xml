@@ -28,25 +28,13 @@
 
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
-    <depends>com.intellij.modules.compose</depends>
-    <depends>com.intellij.modules.lsp</depends>
-
-    <depends>org.jetbrains.kotlin</depends>
+    <depends optional="true" config-file="compose.xml">com.intellij.modules.compose</depends>
+    <depends optional="true" config-file="kotlin.xml">org.jetbrains.kotlin</depends>
     <depends>Git4Idea</depends>
     <resource-bundle>messages.MyMessageBundle</resource-bundle>
-
-    <!-- Declare K2 mode compatibility -->
-    <extensions defaultExtensionNs="org.jetbrains.kotlin">
-        <supportsKotlinPluginMode supportsK2="true"/>
-    </extensions>
 
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="GitWorktrees"
-                    displayName="Git Worktrees"
-                    factoryClass="com.purringlabs.gitworktree.gitworktreemanager.MyToolWindowFactory"
-                    anchor="bottom"
-                    icon="/META-INF/pluginIcon.svg"/>
     </extensions>
 </idea-plugin>

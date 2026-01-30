@@ -1,0 +1,9 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="GitWorktrees"
+                    displayName="Git Worktrees"
+                    factoryClass="com.purringlabs.gitworktree.gitworktreemanager.MyToolWindowFactory"
+                    anchor="bottom"
+                    icon="/META-INF/pluginIcon.svg"/>
+    </extensions>
+</idea-plugin>

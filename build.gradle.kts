@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.0"
+version = "1.0.3"
 
 repositories {
     mavenCentral()
@@ -37,15 +37,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Initial release of Git Worktree Manager
-
-            Features:
-            - Create worktrees with automatic branch creation
-            - List all worktrees with branch and commit info
-            - Delete worktrees with confirmation dialog
-            - Auto-open worktrees in new IDE windows
-            - Modern Compose UI with Git branch icon
-            - Compatible with Kotlin K2 mode
+            Fixes:
+            - Make Compose and Kotlin dependencies optional for IDEs that do not bundle them
+            - Keep K2 support when Kotlin plugin is present
         """.trimIndent()
     }
 
