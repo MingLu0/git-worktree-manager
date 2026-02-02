@@ -88,7 +88,8 @@ class WorktreeViewModel(
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
-            repository.deleteWorktree(worktreePath)
+            val branchName = state.worktrees.firstOrNull { it.path == worktreePath }?.branch
+            repository.deleteWorktree(worktreePath, branchName)
                 .onSuccess {
                     refreshWorktrees()
                     onSuccess()

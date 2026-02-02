@@ -61,7 +61,11 @@ class GitWorktreeService(private val project: Project) {
      * @param worktreePath Path to the worktree to delete
      * @return true if successful, false otherwise
      */
-    fun deleteWorktree(repository: GitRepository, worktreePath: String): Boolean {
+    fun deleteWorktree(
+        repository: GitRepository,
+        worktreePath: String,
+        branchName: String?
+    ): Boolean {
         val git = Git.getInstance()
         val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
         handler.addParameters("remove")
@@ -69,6 +73,12 @@ class GitWorktreeService(private val project: Project) {
         handler.addParameters("--force")
 
         val result = git.runCommand(handler)
+        if (result.success() && !branchName.isNullOrBlank()) {
+            val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+            deleteBranchHandler.addParameters("-D", branchName)
+            git.runCommand(deleteBranchHandler)
+        }
+
         return result.success()
     }
 

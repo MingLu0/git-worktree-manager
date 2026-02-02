@@ -58,12 +58,12 @@ class WorktreeRepository(private val project: Project) {
      * @param worktreePath Path to the worktree to delete
      * @return Result indicating success or failure
      */
-    suspend fun deleteWorktree(worktreePath: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = withContext(Dispatchers.IO) {
         val repository = currentRepository
             ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
 
         runCatching {
-            val success = service.deleteWorktree(repository, worktreePath)
+            val success = service.deleteWorktree(repository, worktreePath, branchName)
             if (success) {
                 Unit
             } else {
