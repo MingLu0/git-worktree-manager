@@ -28,6 +28,7 @@ class WorktreeViewModel(
 
     var state by mutableStateOf(WorktreeState())
         private set
+    private val autoRefreshDebouncer = WorktreeRefreshDebouncer(coroutineScope) { refreshWorktrees() }
 
     /**
      * Refreshes the list of worktrees from the repository
@@ -49,6 +50,20 @@ class WorktreeViewModel(
                     )
                 }
         }
+    }
+
+    /**
+     * Requests a debounced refresh for repository change events.
+     */
+    fun requestAutoRefresh() {
+        autoRefreshDebouncer.requestRefresh()
+    }
+
+    /**
+     * Cancels any pending debounced refresh when disposing.
+     */
+    fun cancelAutoRefresh() {
+        autoRefreshDebouncer.cancel()
     }
 
     /**
