@@ -10,8 +10,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import java.io.File
@@ -22,6 +24,8 @@ import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesServi
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryChangeListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -29,6 +33,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.annotations.VisibleForTesting
 
 class MyToolWindowFactory : ToolWindowFactory {
     override fun shouldBeAvailable(project: Project) = true
@@ -60,6 +65,15 @@ private fun WorktreeManagerContent(project: Project) {
     // Initialize data on first composition
     LaunchedEffect(Unit) {
         viewModel.refreshWorktrees()
+    }
+
+    DisposableEffect(project) {
+        val disposable = registerGitRepoAutoRefresh(
+            project = project,
+            requestAutoRefresh = viewModel::requestAutoRefresh,
+            cancelAutoRefresh = viewModel::cancelAutoRefresh
+        )
+        onDispose { Disposer.dispose(disposable) }
     }
 
     WorktreeListContent(
@@ -281,6 +295,23 @@ private fun WorktreeManagerContent(project: Project) {
             result == Messages.YES
         }
     )
+}
+
+@VisibleForTesting
+internal fun registerGitRepoAutoRefresh(
+    project: Project,
+    requestAutoRefresh: () -> Unit,
+    cancelAutoRefresh: () -> Unit
+): Disposable {
+    val connection = project.messageBus.connect()
+    connection.subscribe(
+        GitRepository.GIT_REPO_CHANGE,
+        GitRepositoryChangeListener { requestAutoRefresh() }
+    )
+    return Disposable {
+        cancelAutoRefresh()
+        connection.dispose()
+    }
 }
 
 /**
