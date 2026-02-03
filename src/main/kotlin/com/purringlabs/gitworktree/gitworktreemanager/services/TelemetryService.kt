@@ -8,7 +8,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.util.SystemInfo
-import com.newrelic.api.agent.NewRelic
 import com.purringlabs.gitworktree.gitworktreemanager.models.CopyFilesEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
@@ -19,6 +18,15 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
 import com.purringlabs.gitworktree.gitworktreemanager.models.TelemetryContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import java.util.Base64
 
 interface TelemetryService {
@@ -33,6 +41,9 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     private val logger = Logger.getInstance(TelemetryServiceImpl::class.java)
     @OptIn(ExperimentalSerializationApi::class)
     private val json = Json { encodeDefaults = true; explicitNulls = false }
+    private val httpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(3))
+        .build()
     private val context: TelemetryContext
     private val newRelicEnabled: Boolean
 
@@ -65,8 +76,8 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         runAsync {
             try {
                 if (newRelicEnabled) {
-                    val attributes = buildErrorAttributes(error)
-                    NewRelic.getAgent().getInsights().recordCustomEvent("ERROR_EVENT", attributes)
+                    val payload = buildErrorPayload(error)
+                    sendPayload(payload)
                 } else {
                     logToIntelliJ(error)
                 }
@@ -89,16 +100,11 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     private fun initializeNewRelic(): Boolean {
         return try {
             val apiKey = ApiKeyHolder.getKey()
-            if (apiKey.isBlank()) {
-                logger.warn("New Relic API key is missing; telemetry disabled")
+            val accountId = AccountIdHolder.getAccountId()
+            if (apiKey.isBlank() || accountId.isBlank()) {
+                logger.warn("New Relic account id or insert key is missing; telemetry disabled")
                 return false
             }
-
-            NewRelic.addCustomParameter("ide_version", context.ideVersion)
-            NewRelic.addCustomParameter("plugin_version", context.pluginVersion)
-            NewRelic.addCustomParameter("os_name", context.osName)
-            NewRelic.addCustomParameter("os_version", context.osVersion)
-            NewRelic.addCustomParameter("jvm_version", context.jvmVersion)
 
             logger.info("New Relic telemetry initialized")
             true
@@ -109,101 +115,121 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     }
 
     private fun sendToNewRelic(operation: OperationEvent) {
-        val attributes = buildOperationAttributes(operation)
-        NewRelic.getAgent().getInsights().recordCustomEvent(operation.operationType, attributes)
+        val payload = buildOperationPayload(operation)
+        sendPayload(payload)
     }
 
-    private fun buildOperationAttributes(operation: OperationEvent): Map<String, Any> {
-        val attributes = mutableMapOf<String, Any>(
-            "operation_id" to operation.operationId,
-            "duration_ms" to operation.durationMs,
-            "success" to operation.success,
-            "ide_version" to operation.context.ideVersion,
-            "plugin_version" to operation.context.pluginVersion,
-            "os_name" to operation.context.osName,
-            "os_version" to operation.context.osVersion,
-            "jvm_version" to operation.context.jvmVersion
-        )
+    private fun buildOperationPayload(operation: OperationEvent): String {
+        val payload = buildJsonArray {
+            add(buildJsonObject {
+                put("eventType", operation.operationType)
+                put("operation_id", operation.operationId)
+                put("duration_ms", operation.durationMs)
+                put("success", operation.success)
+                put("ide_version", operation.context.ideVersion)
+                put("plugin_version", operation.context.pluginVersion)
+                put("os_name", operation.context.osName)
+                put("os_version", operation.context.osVersion)
+                put("jvm_version", operation.context.jvmVersion)
+                addOperationFields(this, operation)
+            })
+        }
 
-        attributes.putAll(extractOperationFields(operation))
-
-        return attributes
+        return json.encodeToString(JsonArray.serializer(), payload)
     }
 
-    private fun extractOperationFields(operation: OperationEvent): Map<String, Any> {
-        return when (operation) {
-            is CreateWorktreeEvent -> baseAttributes(
-                mapOf(
-                    "worktree_name" to operation.worktreeName,
-                    "branch_name" to operation.branchName
-                ),
-                operation.error
-            )
-            is DeleteWorktreeEvent -> baseAttributes(
-                mapOf(
-                    "worktree_name" to operation.worktreeName,
-                    "branch_deleted" to operation.branchDeleted
-                ),
-                operation.error
-            )
-            is ListWorktreesEvent -> baseAttributes(
-                mapOf("worktree_count" to operation.worktreeCount),
-                operation.error
-            )
-            is CopyFilesEvent -> baseAttributes(
-                mapOf(
-                    "item_count" to operation.itemCount,
-                    "success_count" to operation.successCount,
-                    "failure_count" to operation.failureCount
-                ),
-                operation.error
-            )
+    private fun buildErrorPayload(error: ErrorEvent): String {
+        val payload = buildJsonArray {
+            add(buildJsonObject {
+                put("eventType", "ERROR_EVENT")
+                put("error_id", error.errorId)
+                put("timestamp", error.timestamp)
+                put("ide_version", error.context.ideVersion)
+                put("plugin_version", error.context.pluginVersion)
+                put("os_name", error.context.osName)
+                put("os_version", error.context.osVersion)
+                put("jvm_version", error.context.jvmVersion)
+                addErrorFields(this, error.error)
+            })
+        }
+
+        return json.encodeToString(JsonArray.serializer(), payload)
+    }
+
+    private fun addOperationFields(
+        builder: kotlinx.serialization.json.JsonObjectBuilder,
+        operation: OperationEvent
+    ) {
+        when (operation) {
+            is CreateWorktreeEvent -> {
+                builder.put("worktree_name", operation.worktreeName)
+                builder.put("branch_name", operation.branchName)
+                addErrorFields(builder, operation.error)
+            }
+            is DeleteWorktreeEvent -> {
+                builder.put("worktree_name", operation.worktreeName)
+                builder.put("branch_deleted", operation.branchDeleted)
+                addErrorFields(builder, operation.error)
+            }
+            is ListWorktreesEvent -> {
+                builder.put("worktree_count", operation.worktreeCount)
+                addErrorFields(builder, operation.error)
+            }
+            is CopyFilesEvent -> {
+                builder.put("item_count", operation.itemCount)
+                builder.put("success_count", operation.successCount)
+                builder.put("failure_count", operation.failureCount)
+                addErrorFields(builder, operation.error)
+            }
         }
     }
 
-    private fun baseAttributes(
-        fields: Map<String, Any>,
-        error: StructuredError?
-    ): Map<String, Any> {
-        val attributes = fields.toMutableMap()
-        attributes.putAll(errorAttributes(error))
-        return attributes
+    private fun addErrorFields(builder: kotlinx.serialization.json.JsonObjectBuilder, error: StructuredError?) {
+        if (error == null) return
+        builder.put("error_type", error.errorType)
+        builder.put("error_message", error.errorMessage)
+        error.gitCommand?.let { builder.put("git_command", it) }
+        error.gitExitCode?.let { builder.put("git_exit_code", it) }
+        error.gitErrorOutput?.let { builder.put("git_error_output", it) }
+        error.stackTrace?.let { builder.put("stack_trace", it) }
     }
 
-    private fun errorAttributes(error: StructuredError?): Map<String, Any> {
-        if (error == null) return emptyMap()
-        val attributes = mutableMapOf<String, Any>(
-            "error_type" to error.errorType,
-            "error_message" to error.errorMessage
-        )
-        error.gitCommand?.let { attributes["git_command"] = it }
-        error.gitExitCode?.let { attributes["git_exit_code"] = it }
-        error.gitErrorOutput?.let { attributes["git_error_output"] = it }
-        error.stackTrace?.let { attributes["stack_trace"] = it }
-        return attributes
+    private fun sendPayload(payload: String) {
+        val apiKey = ApiKeyHolder.getKey()
+        val accountId = AccountIdHolder.getAccountId()
+        if (apiKey.isBlank() || accountId.isBlank()) {
+            logger.warn("New Relic account id or insert key is missing; telemetry disabled")
+            return
+        }
+
+        val request = HttpRequest.newBuilder(URI.create(buildEventsEndpoint(accountId)))
+            .header("Content-Type", "application/json")
+            .header("X-Insert-Key", apiKey)
+            .timeout(Duration.ofSeconds(5))
+            .POST(HttpRequest.BodyPublishers.ofString(payload))
+            .build()
+
+        try {
+            val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() !in 200..299) {
+                logger.warn("New Relic ingest failed: HTTP ${response.statusCode()} - ${response.body()}")
+            }
+        } catch (e: Exception) {
+            logger.warn("New Relic ingest request failed", e)
+        }
     }
 
-    private fun buildErrorAttributes(error: ErrorEvent): Map<String, Any> {
-        val attributes = mutableMapOf<String, Any>(
-            "error_id" to error.errorId,
-            "timestamp" to error.timestamp,
-            "ide_version" to error.context.ideVersion,
-            "plugin_version" to error.context.pluginVersion,
-            "os_name" to error.context.osName,
-            "os_version" to error.context.osVersion,
-            "jvm_version" to error.context.jvmVersion
-        )
-        attributes.putAll(errorAttributes(error.error))
-        return attributes
+    private fun buildEventsEndpoint(accountId: String): String {
+        return "https://insights-collector.newrelic.com/v1/accounts/$accountId/events"
     }
 
     private fun logToIntelliJ(operation: OperationEvent) {
-        val payload = json.encodeToString(OperationEvent.serializer(), operation)
+        val payload = buildOperationPayload(operation)
         logger.info("TELEMETRY_EVENT: $payload")
     }
 
     private fun logToIntelliJ(error: ErrorEvent) {
-        val payload = json.encodeToString(ErrorEvent.serializer(), error)
+        val payload = buildErrorPayload(error)
         logger.info("TELEMETRY_ERROR: $payload")
     }
 
@@ -231,6 +257,11 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         fun getKey(): String = runCatching {
             String(Base64.getDecoder().decode(encodedKey))
         }.getOrDefault("")
+    }
+
+    private object AccountIdHolder {
+        private const val accountId = "7666948"
+        fun getAccountId(): String = accountId
     }
 
     companion object {

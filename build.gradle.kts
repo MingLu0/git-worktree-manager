@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.6"
+version = "1.0.7"
 
 repositories {
     mavenCentral()
@@ -30,7 +30,6 @@ dependencies {
         bundledPlugin("Git4Idea")
     }
 
-    implementation("com.newrelic.agent.java:newrelic-api:8.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     testImplementation(kotlin("test"))
