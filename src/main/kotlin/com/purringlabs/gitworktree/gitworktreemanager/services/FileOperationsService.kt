@@ -17,7 +17,7 @@ import java.nio.file.attribute.BasicFileAttributes
  * Continues operation even when individual files fail, collecting errors for reporting.
  */
 @Service(Service.Level.PROJECT)
-class FileOperationsService(private val project: Project) {
+class FileOperationsService(private val project: Project) : FileOperations {
 
     companion object {
         fun getInstance(project: Project): FileOperationsService {
@@ -33,7 +33,7 @@ class FileOperationsService(private val project: Project) {
      * @param items List of files/directories to copy (relative paths)
      * @return CopyResult containing succeeded and failed operations
      */
-    suspend fun copyItems(
+    override suspend fun copyItems(
         sourceRoot: Path,
         destRoot: Path,
         items: List<IgnoredFileInfo>

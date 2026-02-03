@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
  * Repository layer for worktree operations
  * Handles data access and wraps GitWorktreeService
  */
-class WorktreeRepository(private val project: Project) {
+class WorktreeRepository(private val project: Project) : WorktreeRepositoryContract {
 
     private val service: GitWorktreeService
         get() = GitWorktreeService.getInstance(project)
@@ -24,7 +24,7 @@ class WorktreeRepository(private val project: Project) {
      * Fetches the list of worktrees
      * @return Result containing list of WorktreeInfo or error
      */
-    suspend fun fetchWorktrees(): Result<List<WorktreeInfo>> = withContext(Dispatchers.IO) {
+    override suspend fun fetchWorktrees(): Result<List<WorktreeInfo>> = withContext(Dispatchers.IO) {
         val repository = currentRepository
             ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
 
@@ -39,7 +39,7 @@ class WorktreeRepository(private val project: Project) {
      * @param branchName Name of the branch to create/checkout
      * @return Result indicating success or failure
      */
-    suspend fun createWorktree(name: String, branchName: String): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun createWorktree(name: String, branchName: String): Result<String> = withContext(Dispatchers.IO) {
         val repository = currentRepository
             ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
 
@@ -58,7 +58,7 @@ class WorktreeRepository(private val project: Project) {
      * @param worktreePath Path to the worktree to delete
      * @return Result indicating success or failure
      */
-    suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = withContext(Dispatchers.IO) {
         val repository = currentRepository
             ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
 

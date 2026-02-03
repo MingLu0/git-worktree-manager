@@ -16,6 +16,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import javax.swing.JProgressBar
 import java.io.File
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
@@ -30,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.awt.SwingPanel
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
@@ -330,12 +332,40 @@ private fun WorktreeListContent(
     onConfirmDelete: (WorktreeInfo) -> Boolean,
     onRequestCopyIgnoredFiles: () -> Boolean
 ) {
+    val isBusy = state.isCreating || state.isScanning || state.deletingWorktreePath != null
+    val statusText = when {
+        state.isScanning -> "Scanning ignored files..."
+        state.isCreating -> "Creating worktree..."
+        state.deletingWorktreePath != null -> "Deleting worktree..."
+        else -> null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (isBusy) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                SwingPanel(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp),
+                    factory = {
+                        JProgressBar().apply {
+                            isIndeterminate = true
+                            border = null
+                        }
+                    }
+                )
+                statusText?.let { Text(it) }
+            }
+        }
+
         // Create button at the top
         OutlinedButton(onClick = {
             val worktreeName = onRequestWorktreeName()
@@ -350,7 +380,7 @@ private fun WorktreeListContent(
                     }
                 }
             }
-        }) {
+        }, enabled = !state.isCreating && !state.isScanning) {
             Text("Create Worktree")
         }
 
@@ -385,6 +415,7 @@ private fun WorktreeListContent(
                 items(state.worktrees) { worktree ->
                     WorktreeItem(
                         worktree = worktree,
+                        isDeleting = state.deletingWorktreePath == worktree.path,
                         onDelete = {
                             if (onConfirmDelete(worktree)) {
                                 onDeleteWorktree(worktree)
@@ -404,6 +435,7 @@ private fun WorktreeListContent(
 @Composable
 private fun WorktreeItem(
     worktree: WorktreeInfo,
+    isDeleting: Boolean,
     onDelete: () -> Unit
 ) {
     Row(
@@ -441,7 +473,7 @@ private fun WorktreeItem(
 
         // Delete button (only show for non-main worktrees)
         if (!worktree.isMain) {
-            OutlinedButton(onClick = onDelete) {
+            OutlinedButton(onClick = onDelete, enabled = !isDeleting) {
                 Text("Delete")
             }
         }

@@ -5,10 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.intellij.openapi.project.Project
 import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
-import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
-import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
+import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
+import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperations
 import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
-import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
+import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesScanner
 import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -21,9 +21,9 @@ import java.nio.file.Paths
 class WorktreeViewModel(
     private val project: Project,
     private val coroutineScope: CoroutineScope,
-    private val repository: WorktreeRepository,
-    private val ignoredFilesService: IgnoredFilesService,
-    private val fileOpsService: FileOperationsService
+    private val repository: WorktreeRepositoryContract,
+    private val ignoredFilesService: IgnoredFilesScanner,
+    private val fileOpsService: FileOperations
 ) {
 
     var state by mutableStateOf(WorktreeState())
@@ -80,14 +80,19 @@ class WorktreeViewModel(
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
-            repository.createWorktree(name, branchName)
-                .onSuccess { worktreePath ->
-                    refreshWorktrees()
-                    onSuccess(worktreePath)
-                }
-                .onFailure { error ->
-                    onError(error.message ?: "Failed to create worktree")
-                }
+            state = state.copy(isCreating = true, error = null)
+            try {
+                repository.createWorktree(name, branchName)
+                    .onSuccess { worktreePath ->
+                        refreshWorktrees()
+                        onSuccess(worktreePath)
+                    }
+                    .onFailure { error ->
+                        onError(error.message ?: "Failed to create worktree")
+                    }
+            } finally {
+                state = state.copy(isCreating = false)
+            }
         }
     }
 
@@ -103,15 +108,20 @@ class WorktreeViewModel(
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
-            val branchName = state.worktrees.firstOrNull { it.path == worktreePath }?.branch
-            repository.deleteWorktree(worktreePath, branchName)
-                .onSuccess {
-                    refreshWorktrees()
-                    onSuccess()
-                }
-                .onFailure { error ->
-                    onError(error.message ?: "Failed to delete worktree")
-                }
+            state = state.copy(deletingWorktreePath = worktreePath, error = null)
+            try {
+                val branchName = state.worktrees.firstOrNull { it.path == worktreePath }?.branch
+                repository.deleteWorktree(worktreePath, branchName)
+                    .onSuccess {
+                        refreshWorktrees()
+                        onSuccess()
+                    }
+                    .onFailure { error ->
+                        onError(error.message ?: "Failed to delete worktree")
+                    }
+            } finally {
+                state = state.copy(deletingWorktreePath = null)
+            }
         }
     }
 
@@ -155,21 +165,26 @@ class WorktreeViewModel(
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
-            // 1. Create worktree (existing logic)
-            repository.createWorktree(worktreeName, branchName)
-                .onSuccess { worktreePath ->
-                    // 2. If files selected, copy them
-                    if (selectedFiles.any { it.selected }) {
-                        coroutineScope.launch {
-                            copyIgnoredFiles(worktreeName, selectedFiles)
+            state = state.copy(isCreating = true, error = null)
+            try {
+                // 1. Create worktree (existing logic)
+                repository.createWorktree(worktreeName, branchName)
+                    .onSuccess { worktreePath ->
+                        // 2. If files selected, copy them
+                        if (selectedFiles.any { it.selected }) {
+                            coroutineScope.launch {
+                                copyIgnoredFiles(worktreeName, selectedFiles)
+                            }
                         }
+                        refreshWorktrees()
+                        onSuccess(worktreePath)
                     }
-                    refreshWorktrees()
-                    onSuccess(worktreePath)
-                }
-                .onFailure { error ->
-                    onError(error.message ?: "Failed to create worktree")
-                }
+                    .onFailure { error ->
+                        onError(error.message ?: "Failed to create worktree")
+                    }
+            } finally {
+                state = state.copy(isCreating = false)
+            }
         }
     }
 

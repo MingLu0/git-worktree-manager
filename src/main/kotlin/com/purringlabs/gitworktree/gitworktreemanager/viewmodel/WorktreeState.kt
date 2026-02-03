@@ -10,6 +10,8 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 data class WorktreeState(
     val worktrees: List<WorktreeInfo> = emptyList(),
     val isLoading: Boolean = false,
+    val isCreating: Boolean = false,
+    val deletingWorktreePath: String? = null,
     val error: String? = null,
 
     // Ignored files workflow state

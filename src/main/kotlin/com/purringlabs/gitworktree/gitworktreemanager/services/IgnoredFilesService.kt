@@ -24,7 +24,7 @@ import kotlin.io.path.isSymbolicLink
  * Requires Git 2.11.0+ for --porcelain=v2 support.
  */
 @Service(Service.Level.PROJECT)
-class IgnoredFilesService(private val project: Project) {
+class IgnoredFilesService(private val project: Project) : IgnoredFilesScanner {
 
     companion object {
         fun getInstance(project: Project): IgnoredFilesService {
@@ -38,7 +38,7 @@ class IgnoredFilesService(private val project: Project) {
      * @param projectPath The absolute path to the project root
      * @return Result containing list of IgnoredFileInfo objects, or error if scan fails
      */
-    suspend fun scanIgnoredFiles(projectPath: String): Result<List<IgnoredFileInfo>> = withContext(Dispatchers.IO) {
+    override suspend fun scanIgnoredFiles(projectPath: String): Result<List<IgnoredFileInfo>> = withContext(Dispatchers.IO) {
         runCatching {
             val repositoryManager = GitRepositoryManager.getInstance(project)
 
