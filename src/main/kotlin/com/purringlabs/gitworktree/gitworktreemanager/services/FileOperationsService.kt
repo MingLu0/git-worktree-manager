@@ -3,12 +3,16 @@ package com.purringlabs.gitworktree.gitworktreemanager.services
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.purringlabs.gitworktree.gitworktreemanager.models.CopyResult
+import com.purringlabs.gitworktree.gitworktreemanager.models.CopyFilesEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorType
 import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
+import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.UUID
 
 /**
  * Service for file and directory operations between worktrees
@@ -25,6 +29,9 @@ class FileOperationsService(private val project: Project) : FileOperations {
         }
     }
 
+    private val telemetryService: TelemetryService
+        get() = TelemetryServiceImpl.getInstance()
+
     /**
      * Copies files and directories from source to destination
      *
@@ -38,6 +45,8 @@ class FileOperationsService(private val project: Project) : FileOperations {
         destRoot: Path,
         items: List<IgnoredFileInfo>
     ): CopyResult = withContext(Dispatchers.IO) {
+        val operationId = UUID.randomUUID().toString()
+        val startTime = System.currentTimeMillis()
         val succeeded = mutableListOf<String>()
         val failed = mutableListOf<Pair<String, String>>()
 
@@ -74,7 +83,36 @@ class FileOperationsService(private val project: Project) : FileOperations {
             }
         }
 
-        CopyResult(succeeded = succeeded, failed = failed)
+        val result = CopyResult(succeeded = succeeded, failed = failed)
+        val failureCount = failed.size
+        val error = if (failureCount > 0) {
+            StructuredError(
+                errorType = ErrorType.FILE_OPERATION_FAILED.name,
+                errorMessage = "Failed to copy $failureCount of ${succeeded.size + failureCount} items",
+                gitCommand = null,
+                gitExitCode = null,
+                gitErrorOutput = null,
+                stackTrace = null
+            )
+        } else {
+            null
+        }
+
+        telemetryService.recordOperation(
+            CopyFilesEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - startTime,
+                success = failureCount == 0,
+                context = telemetryService.getContext(),
+                itemCount = items.count { it.selected },
+                successCount = succeeded.size,
+                failureCount = failureCount,
+                error = error
+            )
+        )
+
+        result
     }
 
     /**

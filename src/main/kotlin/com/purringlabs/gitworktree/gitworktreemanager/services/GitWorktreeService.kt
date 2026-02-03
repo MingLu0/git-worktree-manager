@@ -2,6 +2,9 @@ package com.purringlabs.gitworktree.gitworktreemanager.services
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.diagnostic.Logger
+import com.purringlabs.gitworktree.gitworktreemanager.exceptions.WorktreeOperationException
+import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
@@ -11,19 +14,20 @@ import java.io.File
 
 @Service(Service.Level.PROJECT)
 class GitWorktreeService(private val project: Project) {
+    private val logger = Logger.getInstance(GitWorktreeService::class.java)
 
     /**
      * Creates a new git worktree
      * @param repository The git repository
      * @param worktreeName Name for the worktree directory
      * @param branchName Name of the branch to create/checkout
-     * @return true if successful, false otherwise
+     * @return Result containing the worktree path or error details
      */
     fun createWorktree(
         repository: GitRepository,
         worktreeName: String,
         branchName: String
-    ): Boolean {
+    ): Result<String> {
         val git = Git.getInstance()
         val worktreePath = getWorktreePath(repository, worktreeName)
 
@@ -32,26 +36,62 @@ class GitWorktreeService(private val project: Project) {
         handler.addParameters(worktreePath)
         handler.addParameters("-b", branchName)
 
-        val result = git.runCommand(handler)
-        return result.success()
+        return try {
+            val result = git.runCommand(handler)
+            if (result.success()) {
+                Result.success(worktreePath)
+            } else {
+                Result.failure(
+                    WorktreeOperationException(
+                        message = "Failed to create worktree '$worktreeName'",
+                        gitCommand = handler.printableCommandLine(),
+                        gitExitCode = result.exitCode,
+                        gitErrorOutput = result.errorOutputAsJoinedString
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(
+                WorktreeOperationException(
+                    message = "Unexpected error creating worktree: ${e.message}",
+                    cause = e
+                )
+            )
+        }
     }
 
     /**
      * Lists all worktrees for the repository
      * @param repository The git repository
-     * @return List of WorktreeInfo objects
+     * @return Result containing list of WorktreeInfo objects or error details
      */
-    fun listWorktrees(repository: GitRepository): List<WorktreeInfo> {
+    fun listWorktrees(repository: GitRepository): Result<List<WorktreeInfo>> {
         val git = Git.getInstance()
         val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
         handler.addParameters("list")
         handler.addParameters("--porcelain")
 
-        val result = git.runCommand(handler)
-        return if (result.success()) {
-            WorktreeInfo.parseFromPorcelain(result.output)
-        } else {
-            emptyList()
+        return try {
+            val result = git.runCommand(handler)
+            if (result.success()) {
+                Result.success(WorktreeInfo.parseFromPorcelain(result.output))
+            } else {
+                Result.failure(
+                    WorktreeOperationException(
+                        message = "Failed to list worktrees",
+                        gitCommand = handler.printableCommandLine(),
+                        gitExitCode = result.exitCode,
+                        gitErrorOutput = result.errorOutputAsJoinedString
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Result.failure(
+                WorktreeOperationException(
+                    message = "Error parsing worktree list: ${e.message}",
+                    cause = e
+                )
+            )
         }
     }
 
@@ -59,27 +99,55 @@ class GitWorktreeService(private val project: Project) {
      * Deletes a worktree
      * @param repository The git repository
      * @param worktreePath Path to the worktree to delete
-     * @return true if successful, false otherwise
+     * @return Result containing deletion outcomes or error details
      */
     fun deleteWorktree(
         repository: GitRepository,
         worktreePath: String,
         branchName: String?
-    ): Boolean {
+    ): Result<DeleteWorktreeResult> {
         val git = Git.getInstance()
-        val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
-        handler.addParameters("remove")
-        handler.addParameters(worktreePath)
-        handler.addParameters("--force")
+        val worktreeHandler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
+        worktreeHandler.addParameters("remove")
+        worktreeHandler.addParameters(worktreePath)
+        worktreeHandler.addParameters("--force")
 
-        val result = git.runCommand(handler)
-        if (result.success() && !branchName.isNullOrBlank()) {
-            val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
-            deleteBranchHandler.addParameters("-D", branchName)
-            git.runCommand(deleteBranchHandler)
+        return try {
+            val worktreeResult = git.runCommand(worktreeHandler)
+            if (!worktreeResult.success()) {
+                return Result.failure(
+                    WorktreeOperationException(
+                        message = "Failed to remove worktree '$worktreePath'",
+                        gitCommand = worktreeHandler.printableCommandLine(),
+                        gitExitCode = worktreeResult.exitCode,
+                        gitErrorOutput = worktreeResult.errorOutputAsJoinedString
+                    )
+                )
+            }
+
+            var branchDeleted = false
+            if (!branchName.isNullOrBlank()) {
+                val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+                deleteBranchHandler.addParameters("-D", branchName)
+                val branchResult = git.runCommand(deleteBranchHandler)
+                branchDeleted = branchResult.success()
+                if (!branchDeleted) {
+                    logger.warn(
+                        "Worktree '$worktreePath' removed, but failed to delete branch '$branchName': " +
+                            branchResult.errorOutputAsJoinedString
+                    )
+                }
+            }
+
+            Result.success(DeleteWorktreeResult(worktreeRemoved = true, branchDeleted = branchDeleted))
+        } catch (e: Exception) {
+            Result.failure(
+                WorktreeOperationException(
+                    message = "Unexpected error deleting worktree: ${e.message}",
+                    cause = e
+                )
+            )
         }
-
-        return result.success()
     }
 
     /**

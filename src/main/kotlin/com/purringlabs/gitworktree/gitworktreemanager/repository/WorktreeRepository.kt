@@ -1,12 +1,21 @@
 package com.purringlabs.gitworktree.gitworktreemanager.repository
 
 import com.intellij.openapi.project.Project
+import com.purringlabs.gitworktree.gitworktreemanager.exceptions.NoRepositoryException
+import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.ListWorktreesEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryErrorMapper
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 
 /**
  * Repository layer for worktree operations
@@ -17,6 +26,9 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
     private val service: GitWorktreeService
         get() = GitWorktreeService.getInstance(project)
 
+    private val telemetryService: TelemetryService
+        get() = TelemetryServiceImpl.getInstance()
+
     private val currentRepository: GitRepository?
         get() = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
 
@@ -25,12 +37,29 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @return Result containing list of WorktreeInfo or error
      */
     override suspend fun fetchWorktrees(): Result<List<WorktreeInfo>> = withContext(Dispatchers.IO) {
-        val repository = currentRepository
-            ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
+        val operationId = UUID.randomUUID().toString()
+        val startTime = System.currentTimeMillis()
 
-        runCatching {
+        val repository = currentRepository
+        val result = if (repository == null) {
+            Result.failure(NoRepositoryException("No Git repository found in project"))
+        } else {
             service.listWorktrees(repository)
         }
+
+        telemetryService.recordOperation(
+            ListWorktreesEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - startTime,
+                success = result.isSuccess,
+                context = telemetryService.getContext(),
+                worktreeCount = result.getOrNull()?.size ?: 0,
+                error = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
+            )
+        )
+
+        result
     }
 
     /**
@@ -40,17 +69,30 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @return Result indicating success or failure
      */
     override suspend fun createWorktree(name: String, branchName: String): Result<String> = withContext(Dispatchers.IO) {
-        val repository = currentRepository
-            ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
+        val operationId = UUID.randomUUID().toString()
+        val startTime = System.currentTimeMillis()
 
-        runCatching {
-            val success = service.createWorktree(repository, name, branchName)
-            if (success) {
-                service.getWorktreePath(repository, name)
-            } else {
-                throw WorktreeOperationException("Failed to create worktree")
-            }
+        val repository = currentRepository
+        val result = if (repository == null) {
+            Result.failure(NoRepositoryException("No Git repository found in project"))
+        } else {
+            service.createWorktree(repository, name, branchName)
         }
+
+        telemetryService.recordOperation(
+            CreateWorktreeEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - startTime,
+                success = result.isSuccess,
+                context = telemetryService.getContext(),
+                worktreeName = name,
+                branchName = branchName,
+                error = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
+            )
+        )
+
+        result
     }
 
     /**
@@ -59,26 +101,30 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @return Result indicating success or failure
      */
     override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = withContext(Dispatchers.IO) {
-        val repository = currentRepository
-            ?: return@withContext Result.failure(NoRepositoryException("No Git repository found in project"))
+        val operationId = UUID.randomUUID().toString()
+        val startTime = System.currentTimeMillis()
 
-        runCatching {
-            val success = service.deleteWorktree(repository, worktreePath, branchName)
-            if (success) {
-                Unit
-            } else {
-                throw WorktreeOperationException("Failed to delete worktree")
-            }
+        val repository = currentRepository
+        val result = if (repository == null) {
+            Result.failure(NoRepositoryException("No Git repository found in project"))
+        } else {
+            service.deleteWorktree(repository, worktreePath, branchName)
         }
+
+        telemetryService.recordOperation(
+            DeleteWorktreeEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - startTime,
+                success = result.isSuccess,
+                context = telemetryService.getContext(),
+                worktreeName = worktreePath.substringAfterLast(File.separatorChar),
+                branchDeleted = result.getOrNull()?.branchDeleted ?: false,
+                error = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
+            )
+        )
+
+        result.map { Unit }
     }
 }
 
-/**
- * Exception thrown when no Git repository is found
- */
-class NoRepositoryException(message: String) : Exception(message)
-
-/**
- * Exception thrown when a worktree operation fails
- */
-class WorktreeOperationException(message: String) : Exception(message)

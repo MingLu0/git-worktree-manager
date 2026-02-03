@@ -3,10 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.jvm") version "2.1.20"
     id("org.jetbrains.intellij.platform") version "2.10.2"
     id("org.jetbrains.kotlin.plugin.compose") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.4"
+version = "1.0.6"
 
 repositories {
     mavenCentral()
@@ -28,6 +29,9 @@ dependencies {
         bundledPlugin("org.jetbrains.kotlin")
         bundledPlugin("Git4Idea")
     }
+
+    implementation("com.newrelic.agent.java:newrelic-api:8.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     testImplementation(kotlin("test"))
 }
