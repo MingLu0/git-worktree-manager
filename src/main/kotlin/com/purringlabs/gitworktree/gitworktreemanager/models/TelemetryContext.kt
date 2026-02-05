@@ -8,5 +8,6 @@ data class TelemetryContext(
     val pluginVersion: String,
     val osName: String,
     val osVersion: String,
-    val jvmVersion: String
+    val jvmVersion: String,
+    val countryCode: String
 )

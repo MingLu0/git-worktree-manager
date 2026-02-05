@@ -78,7 +78,6 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
         } else {
             service.createWorktree(repository, name, branchName)
         }
-
         telemetryService.recordOperation(
             CreateWorktreeEvent(
                 operationId = operationId,

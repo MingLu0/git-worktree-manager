@@ -28,6 +28,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.Base64
+import java.util.Locale
 
 interface TelemetryService {
     fun recordOperation(operation: OperationEvent)
@@ -53,7 +54,8 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
             pluginVersion = getPluginVersion(),
             osName = SystemInfo.OS_NAME,
             osVersion = SystemInfo.OS_VERSION,
-            jvmVersion = SystemInfo.JAVA_VERSION
+            jvmVersion = SystemInfo.JAVA_VERSION,
+            countryCode = Locale.getDefault().country.ifBlank { "unknown" }
         )
         newRelicEnabled = initializeNewRelic()
     }
@@ -123,6 +125,8 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         val payload = buildJsonArray {
             add(buildJsonObject {
                 put("eventType", operation.operationType)
+                put("event_type_name", operation.operationType)
+                put("operation_type", operation.operationType)
                 put("operation_id", operation.operationId)
                 put("duration_ms", operation.durationMs)
                 put("success", operation.success)
@@ -131,6 +135,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("os_name", operation.context.osName)
                 put("os_version", operation.context.osVersion)
                 put("jvm_version", operation.context.jvmVersion)
+                put("country_code", operation.context.countryCode)
                 addOperationFields(this, operation)
             })
         }
@@ -142,6 +147,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         val payload = buildJsonArray {
             add(buildJsonObject {
                 put("eventType", "ERROR_EVENT")
+                put("event_type_name", "ERROR_EVENT")
                 put("error_id", error.errorId)
                 put("timestamp", error.timestamp)
                 put("ide_version", error.context.ideVersion)
@@ -149,6 +155,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("os_name", error.context.osName)
                 put("os_version", error.context.osVersion)
                 put("jvm_version", error.context.jvmVersion)
+                put("country_code", error.context.countryCode)
                 addErrorFields(this, error.error)
             })
         }
@@ -245,7 +252,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     private fun getPluginVersion(): String {
         return try {
             PluginManagerCore.getPlugin(
-                PluginId.getId("com.purringlabs.gitworktree.gitworktreemanager")
+                PluginId.getId("com.purringlabs.gitworktree.git-worktree-manager")
             )?.version ?: "unknown"
         } catch (_: Exception) {
             "unknown"
