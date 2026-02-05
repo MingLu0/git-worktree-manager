@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.8"
+version = "1.0.9"
 
 repositories {
     mavenCentral()
@@ -42,11 +42,8 @@ intellijPlatform {
         }
 
         changeNotes = """
-            New:
-            - Optionally copy gitignored files into new worktrees (with selection dialog)
-
-            Fixes:
-            - Fix first-run ignored-files scan race by awaiting scan completion
+            Maintenance:
+            - Version bump for Marketplace release
         """.trimIndent()
     }
 
