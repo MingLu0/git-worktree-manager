@@ -2,7 +2,8 @@ package com.purringlabs.gitworktree.gitworktreemanager
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,13 +12,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.awt.SwingPanel
-import androidx.compose.ui.input.pointer.PointerIcon
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
@@ -514,18 +515,31 @@ private fun WorktreeItem(
     onDelete: () -> Unit
 ) {
     var isHovered by remember { mutableStateOf(false) }
-    val hoverBackground = if (isHovered) Color(0x14000000) else Color.Transparent
+    val hoverBackground = when {
+        !isHovered -> Color.Transparent
+        isSystemInDarkTheme() -> Color(0x22FFFFFF)
+        else -> Color(0x14000000)
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
-            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
+            .pointerMoveFilter(
+                onEnter = {
+                    isHovered = true
+                    false
+                },
+                onExit = {
+                    isHovered = false
+                    false
+                }
+            )
             .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
             // Double-click to open (avoid accidental opens while selecting/copying)
-            .combinedClickable(
-                onClick = {},
-                onDoubleClick = onOpen
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { onOpen() }
+                )
             )
             .background(hoverBackground)
             .padding(8.dp),
