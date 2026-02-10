@@ -1,15 +1,23 @@
 package com.purringlabs.gitworktree.gitworktreemanager
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.input.pointer.PointerIcon
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
@@ -18,6 +26,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.WindowManager
@@ -40,6 +49,7 @@ import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import java.awt.Cursor
 import java.awt.Frame
 import java.io.File
 import java.util.UUID
@@ -347,6 +357,12 @@ private fun openOrFocusWorktree(
     val result = runCatching {
         ApplicationManager.getApplication().invokeLater {
             if (alreadyOpenProject != null) {
+                // Prefer IDE focus APIs; fall back to raw frame-toFront.
+                val ideFrame = WindowManager.getInstance().getIdeFrame(alreadyOpenProject)
+                if (ideFrame != null) {
+                    IdeFocusManager.getInstance(alreadyOpenProject).requestFocus(ideFrame.component, true)
+                }
+
                 val frame = WindowManager.getInstance().getFrame(alreadyOpenProject)
                 if (frame != null) {
                     frame.extendedState = Frame.NORMAL
@@ -489,6 +505,7 @@ private fun WorktreeListContent(
  * Pure UI composable for displaying a single worktree item
  * No dependency on Project - can be previewed with mock data
  */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun WorktreeItem(
     worktree: WorktreeInfo,
@@ -496,10 +513,21 @@ private fun WorktreeItem(
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var isHovered by remember { mutableStateOf(false) }
+    val hoverBackground = if (isHovered) Color(0x14000000) else Color.Transparent
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen)
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
+            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            // Double-click to open (avoid accidental opens while selecting/copying)
+            .combinedClickable(
+                onClick = {},
+                onDoubleClick = onOpen
+            )
+            .background(hoverBackground)
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
