@@ -562,7 +562,7 @@ private fun WorktreeItem(
                 detectTapGestures(
                     onDoubleTap = { onOpen() }
                 )
-            )
+            }
             .background(hoverBackground)
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
