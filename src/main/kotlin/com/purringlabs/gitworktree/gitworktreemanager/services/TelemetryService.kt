@@ -13,6 +13,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ListWorktreesEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.OperationEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
 import com.purringlabs.gitworktree.gitworktreemanager.models.TelemetryContext
@@ -187,6 +188,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 builder.put("success_count", operation.successCount)
                 builder.put("failure_count", operation.failureCount)
                 addErrorFields(builder, operation.error)
+            }
+            is OpenWorktreeEvent -> {
+                builder.put("worktree_path", operation.worktreePath)
+                builder.put("already_open", operation.alreadyOpen)
             }
         }
     }

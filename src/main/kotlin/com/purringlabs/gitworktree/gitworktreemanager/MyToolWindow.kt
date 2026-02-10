@@ -1,5 +1,6 @@
 package com.purringlabs.gitworktree.gitworktreemanager
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,34 +9,41 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.awt.SwingPanel
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import javax.swing.JProgressBar
-import java.io.File
+import com.intellij.openapi.wm.WindowManager
+import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
 import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
 import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.awt.SwingPanel
+import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.annotations.VisibleForTesting
+import java.awt.Frame
+import java.io.File
+import java.util.UUID
+import javax.swing.JProgressBar
 
 class MyToolWindowFactory : ToolWindowFactory {
     override fun shouldBeAvailable(project: Project) = true
@@ -82,6 +90,9 @@ private fun WorktreeManagerContent(project: Project) {
         state = viewModel.state,
         onRefresh = {
             viewModel.refreshWorktrees()
+        },
+        onOpenWorktree = { worktree ->
+            openOrFocusWorktree(project, worktree.path, TelemetryServiceImpl.getInstance())
         },
         onCreateWorktree = { name, branch ->
             viewModel.createWorktree(
@@ -316,6 +327,50 @@ internal fun registerGitRepoAutoRefresh(
     }
 }
 
+private fun openOrFocusWorktree(
+    currentProject: Project,
+    worktreePath: String,
+    telemetryService: TelemetryService
+) {
+    val operationId = UUID.randomUUID().toString()
+    val startTime = System.currentTimeMillis()
+
+    val canonicalTarget = FileUtil.toCanonicalPath(worktreePath)
+
+    val alreadyOpenProject = ProjectManager.getInstance().openProjects.firstOrNull { p ->
+        val base = p.basePath ?: return@firstOrNull false
+        FileUtil.toCanonicalPath(base) == canonicalTarget
+    }
+
+    val alreadyOpen = alreadyOpenProject != null
+
+    val result = runCatching {
+        ApplicationManager.getApplication().invokeLater {
+            if (alreadyOpenProject != null) {
+                val frame = WindowManager.getInstance().getFrame(alreadyOpenProject)
+                if (frame != null) {
+                    frame.extendedState = Frame.NORMAL
+                    frame.toFront()
+                    frame.requestFocus()
+                }
+            } else {
+                ProjectUtil.openOrImport(File(worktreePath).toPath(), currentProject, true)
+            }
+        }
+    }
+
+    telemetryService.recordOperation(
+        OpenWorktreeEvent(
+            operationId = operationId,
+            startTime = startTime,
+            durationMs = System.currentTimeMillis() - startTime,
+            success = result.isSuccess,
+            context = telemetryService.getContext(),
+            worktreePath = worktreePath,
+            alreadyOpen = alreadyOpen
+        )
+    )
+}
 /**
  * Pure UI composable for displaying the worktree list
  * No dependency on Project - can be previewed with mock data
@@ -324,6 +379,7 @@ internal fun registerGitRepoAutoRefresh(
 private fun WorktreeListContent(
     state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
     onRefresh: () -> Unit,
+    onOpenWorktree: (WorktreeInfo) -> Unit,
     onCreateWorktree: (name: String, branch: String) -> Unit,
     onCreateWorktreeWithIgnoredFiles: (name: String, branch: String) -> Unit,
     onDeleteWorktree: (WorktreeInfo) -> Unit,
@@ -416,6 +472,7 @@ private fun WorktreeListContent(
                     WorktreeItem(
                         worktree = worktree,
                         isDeleting = state.deletingWorktreePath == worktree.path,
+                        onOpen = { onOpenWorktree(worktree) },
                         onDelete = {
                             if (onConfirmDelete(worktree)) {
                                 onDeleteWorktree(worktree)
@@ -436,11 +493,13 @@ private fun WorktreeListContent(
 private fun WorktreeItem(
     worktree: WorktreeInfo,
     isDeleting: Boolean,
+    onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onOpen)
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
