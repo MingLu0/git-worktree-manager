@@ -1,0 +1,74 @@
+name: Release to JetBrains Marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Marketplace channel (leave empty for default/stable)'
+        required: false
+        default: ''
+      publish:
+        description: 'Actually publish (true) or just build (false)'
+        required: true
+        default: 'false'
+  push:
+    branches: [ master ]
+
+# Prevent overlapping publishes
+concurrency:
+  group: marketplace-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # --- Signing material (optional but recommended) ---
+      # Provide these as GitHub Actions secrets if you want CI to sign.
+      # - PLUGIN_CERT_CHAIN_B64: base64 of chain.crt
+      # - PLUGIN_PRIVATE_KEY_B64: base64 of private.pem
+      # - PLUGIN_SIGNING_PASSWORD: password for the private key
+      - name: Write signing files (if provided)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${PLUGIN_CERT_CHAIN_B64:-}" ]]; then
+            echo "$PLUGIN_CERT_CHAIN_B64" | base64 -d > chain.crt
+            echo "Wrote chain.crt"
+          fi
+          if [[ -n "${PLUGIN_PRIVATE_KEY_B64:-}" ]]; then
+            echo "$PLUGIN_PRIVATE_KEY_B64" | base64 -d > private.pem
+            echo "Wrote private.pem"
+          fi
+        env:
+          PLUGIN_CERT_CHAIN_B64: ${{ secrets.PLUGIN_CERT_CHAIN_B64 }}
+          PLUGIN_PRIVATE_KEY_B64: ${{ secrets.PLUGIN_PRIVATE_KEY_B64 }}
+
+      - name: Build plugin
+        run: ./gradlew --no-daemon buildPlugin --stacktrace
+
+      - name: Publish to Marketplace (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
+        env:
+          INTELLIJ_PLATFORM_PUBLISHING_TOKEN: ${{ secrets.INTELLIJ_PLATFORM_PUBLISHING_TOKEN }}
+          PLUGIN_SIGNING_PASSWORD: ${{ secrets.PLUGIN_SIGNING_PASSWORD }}
+        run: |
+          # Optional: pass a channel if you use EAP channels.
+          if [[ -n "${{ inputs.channel }}" ]]; then
+            ./gradlew --no-daemon publishPlugin -PintellijPlatformPublishingChannel='${{ inputs.channel }}' --stacktrace
+          else
+            ./gradlew --no-daemon publishPlugin --stacktrace
+          fi
