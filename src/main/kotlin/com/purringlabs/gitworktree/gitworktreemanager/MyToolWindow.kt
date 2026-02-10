@@ -1,41 +1,61 @@
 package com.purringlabs.gitworktree.gitworktreemanager
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.awt.SwingPanel
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import javax.swing.JProgressBar
-import java.io.File
+import com.intellij.openapi.wm.WindowManager
+import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
 import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
 import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
+import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.ui.awt.SwingPanel
+import org.jetbrains.annotations.VisibleForTesting
 import org.jetbrains.jewel.bridge.addComposeTab
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.annotations.VisibleForTesting
+import java.awt.Cursor
+import java.awt.Frame
+import java.io.File
+import java.util.UUID
+import javax.swing.JProgressBar
 
 class MyToolWindowFactory : ToolWindowFactory {
     override fun shouldBeAvailable(project: Project) = true
@@ -82,6 +102,9 @@ private fun WorktreeManagerContent(project: Project) {
         state = viewModel.state,
         onRefresh = {
             viewModel.refreshWorktrees()
+        },
+        onOpenWorktree = { worktree ->
+            openOrFocusWorktree(project, worktree.path, TelemetryServiceImpl.getInstance())
         },
         onCreateWorktree = { name, branch ->
             viewModel.createWorktree(
@@ -316,6 +339,77 @@ internal fun registerGitRepoAutoRefresh(
     }
 }
 
+@VisibleForTesting
+internal fun canonicalizePath(path: String): String = FileUtil.toCanonicalPath(path)
+
+@VisibleForTesting
+internal fun isWorktreeAlreadyOpen(openProjectBasePaths: Sequence<String?>, worktreePath: String): Boolean {
+    val canonicalTarget = canonicalizePath(worktreePath)
+    return openProjectBasePaths
+        .filterNotNull()
+        .any { canonicalizePath(it) == canonicalTarget }
+}
+
+@VisibleForTesting
+internal fun restoreFromMinimizedPreservingMaximized(extendedState: Int): Int {
+    return extendedState and Frame.ICONIFIED.inv()
+}
+
+private fun openOrFocusWorktree(
+    currentProject: Project,
+    worktreePath: String,
+    telemetryService: TelemetryService
+) {
+    val operationId = UUID.randomUUID().toString()
+    val startTime = System.currentTimeMillis()
+
+    val alreadyOpenProject = ProjectManager.getInstance().openProjects.firstOrNull { p ->
+        val base = p.basePath ?: return@firstOrNull false
+        canonicalizePath(base) == canonicalizePath(worktreePath)
+    }
+
+    val alreadyOpen = isWorktreeAlreadyOpen(
+        openProjectBasePaths = ProjectManager.getInstance().openProjects.asSequence().map { it.basePath },
+        worktreePath = worktreePath
+    )
+
+    // Note: invokeLater schedules execution on the EDT. Record telemetry *inside* the EDT action
+    // so success/duration reflect the actual work, not just scheduling.
+    ApplicationManager.getApplication().invokeLater {
+        val execStart = System.currentTimeMillis()
+        val result = runCatching {
+            if (alreadyOpenProject != null) {
+                // Prefer IDE focus APIs; fall back to raw frame-toFront.
+                val ideFrame = WindowManager.getInstance().getIdeFrame(alreadyOpenProject)
+                if (ideFrame != null) {
+                    IdeFocusManager.getInstance(alreadyOpenProject).requestFocus(ideFrame.component, true)
+                }
+
+                val frame = WindowManager.getInstance().getFrame(alreadyOpenProject)
+                if (frame != null) {
+                    // Only restore from minimized; do not clear maximized state.
+                    frame.extendedState = restoreFromMinimizedPreservingMaximized(frame.extendedState)
+                    frame.toFront()
+                    frame.requestFocus()
+                }
+            } else {
+                ProjectUtil.openOrImport(File(worktreePath).toPath(), currentProject, true)
+            }
+        }
+
+        telemetryService.recordOperation(
+            OpenWorktreeEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - execStart,
+                success = result.isSuccess,
+                context = telemetryService.getContext(),
+                worktreePath = worktreePath,
+                alreadyOpen = alreadyOpen
+            )
+        )
+    }
+}
 /**
  * Pure UI composable for displaying the worktree list
  * No dependency on Project - can be previewed with mock data
@@ -324,6 +418,7 @@ internal fun registerGitRepoAutoRefresh(
 private fun WorktreeListContent(
     state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
     onRefresh: () -> Unit,
+    onOpenWorktree: (WorktreeInfo) -> Unit,
     onCreateWorktree: (name: String, branch: String) -> Unit,
     onCreateWorktreeWithIgnoredFiles: (name: String, branch: String) -> Unit,
     onDeleteWorktree: (WorktreeInfo) -> Unit,
@@ -416,6 +511,7 @@ private fun WorktreeListContent(
                     WorktreeItem(
                         worktree = worktree,
                         isDeleting = state.deletingWorktreePath == worktree.path,
+                        onOpen = { onOpenWorktree(worktree) },
                         onDelete = {
                             if (onConfirmDelete(worktree)) {
                                 onDeleteWorktree(worktree)
@@ -432,15 +528,42 @@ private fun WorktreeListContent(
  * Pure UI composable for displaying a single worktree item
  * No dependency on Project - can be previewed with mock data
  */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun WorktreeItem(
     worktree: WorktreeInfo,
     isDeleting: Boolean,
+    onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
+    var isHovered by remember { mutableStateOf(false) }
+    val hoverBackground = when {
+        !isHovered -> Color.Transparent
+        isSystemInDarkTheme() -> Color(0x22FFFFFF)
+        else -> Color(0x14000000)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerMoveFilter(
+                onEnter = {
+                    isHovered = true
+                    false
+                },
+                onExit = {
+                    isHovered = false
+                    false
+                }
+            )
+            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            // Double-click to open (avoid accidental opens while selecting/copying)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { onOpen() }
+                )
+            }
+            .background(hoverBackground)
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -468,6 +591,17 @@ private fun WorktreeItem(
             Text(
                 text = "Commit: ${worktree.commit.take(8)}",
                 fontWeight = FontWeight.Light
+            )
+
+            // Avoid layout jitter in the list: always reserve space for the hint line,
+            // and fade it in/out via alpha.
+            val hintAlpha = if (isHovered) 1f else 0f
+            Text(
+                text = "Double-click to open",
+                fontWeight = FontWeight.Light,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .graphicsLayer(alpha = hintAlpha)
             )
         }
 
