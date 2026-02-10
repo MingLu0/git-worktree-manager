@@ -339,6 +339,22 @@ internal fun registerGitRepoAutoRefresh(
     }
 }
 
+@VisibleForTesting
+internal fun canonicalizePath(path: String): String = FileUtil.toCanonicalPath(path)
+
+@VisibleForTesting
+internal fun isWorktreeAlreadyOpen(openProjectBasePaths: Sequence<String?>, worktreePath: String): Boolean {
+    val canonicalTarget = canonicalizePath(worktreePath)
+    return openProjectBasePaths
+        .filterNotNull()
+        .any { canonicalizePath(it) == canonicalTarget }
+}
+
+@VisibleForTesting
+internal fun restoreFromMinimizedPreservingMaximized(extendedState: Int): Int {
+    return extendedState and Frame.ICONIFIED.inv()
+}
+
 private fun openOrFocusWorktree(
     currentProject: Project,
     worktreePath: String,
@@ -347,14 +363,15 @@ private fun openOrFocusWorktree(
     val operationId = UUID.randomUUID().toString()
     val startTime = System.currentTimeMillis()
 
-    val canonicalTarget = FileUtil.toCanonicalPath(worktreePath)
-
     val alreadyOpenProject = ProjectManager.getInstance().openProjects.firstOrNull { p ->
         val base = p.basePath ?: return@firstOrNull false
-        FileUtil.toCanonicalPath(base) == canonicalTarget
+        canonicalizePath(base) == canonicalizePath(worktreePath)
     }
 
-    val alreadyOpen = alreadyOpenProject != null
+    val alreadyOpen = isWorktreeAlreadyOpen(
+        openProjectBasePaths = ProjectManager.getInstance().openProjects.asSequence().map { it.basePath },
+        worktreePath = worktreePath
+    )
 
     // Note: invokeLater schedules execution on the EDT. Record telemetry *inside* the EDT action
     // so success/duration reflect the actual work, not just scheduling.
@@ -371,7 +388,7 @@ private fun openOrFocusWorktree(
                 val frame = WindowManager.getInstance().getFrame(alreadyOpenProject)
                 if (frame != null) {
                     // Only restore from minimized; do not clear maximized state.
-                    frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
+                    frame.extendedState = restoreFromMinimizedPreservingMaximized(frame.extendedState)
                     frame.toFront()
                     frame.requestFocus()
                 }
