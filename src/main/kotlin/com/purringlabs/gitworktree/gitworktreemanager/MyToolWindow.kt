@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -355,8 +356,11 @@ private fun openOrFocusWorktree(
 
     val alreadyOpen = alreadyOpenProject != null
 
-    val result = runCatching {
-        ApplicationManager.getApplication().invokeLater {
+    // Note: invokeLater schedules execution on the EDT. Record telemetry *inside* the EDT action
+    // so success/duration reflect the actual work, not just scheduling.
+    ApplicationManager.getApplication().invokeLater {
+        val execStart = System.currentTimeMillis()
+        val result = runCatching {
             if (alreadyOpenProject != null) {
                 // Prefer IDE focus APIs; fall back to raw frame-toFront.
                 val ideFrame = WindowManager.getInstance().getIdeFrame(alreadyOpenProject)
@@ -366,7 +370,8 @@ private fun openOrFocusWorktree(
 
                 val frame = WindowManager.getInstance().getFrame(alreadyOpenProject)
                 if (frame != null) {
-                    frame.extendedState = Frame.NORMAL
+                    // Only restore from minimized; do not clear maximized state.
+                    frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
                     frame.toFront()
                     frame.requestFocus()
                 }
@@ -374,19 +379,19 @@ private fun openOrFocusWorktree(
                 ProjectUtil.openOrImport(File(worktreePath).toPath(), currentProject, true)
             }
         }
-    }
 
-    telemetryService.recordOperation(
-        OpenWorktreeEvent(
-            operationId = operationId,
-            startTime = startTime,
-            durationMs = System.currentTimeMillis() - startTime,
-            success = result.isSuccess,
-            context = telemetryService.getContext(),
-            worktreePath = worktreePath,
-            alreadyOpen = alreadyOpen
+        telemetryService.recordOperation(
+            OpenWorktreeEvent(
+                operationId = operationId,
+                startTime = startTime,
+                durationMs = System.currentTimeMillis() - execStart,
+                success = result.isSuccess,
+                context = telemetryService.getContext(),
+                worktreePath = worktreePath,
+                alreadyOpen = alreadyOpen
+            )
         )
-    )
+    }
 }
 /**
  * Pure UI composable for displaying the worktree list
@@ -570,12 +575,17 @@ private fun WorktreeItem(
                 text = "Commit: ${worktree.commit.take(8)}",
                 fontWeight = FontWeight.Light
             )
-            if (isHovered) {
-                Text(
-                    text = "Double-click to open",
-                    fontWeight = FontWeight.Light
-                )
-            }
+
+            // Avoid layout jitter in the list: always reserve space for the hint line,
+            // and fade it in/out via alpha.
+            val hintAlpha = if (isHovered) 1f else 0f
+            Text(
+                text = "Double-click to open",
+                fontWeight = FontWeight.Light,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .graphicsLayer(alpha = hintAlpha)
+            )
         }
 
         // Delete button (only show for non-main worktrees)
