@@ -556,6 +556,12 @@ private fun WorktreeItem(
                 text = "Commit: ${worktree.commit.take(8)}",
                 fontWeight = FontWeight.Light
             )
+            if (isHovered) {
+                Text(
+                    text = "Double-click to open",
+                    fontWeight = FontWeight.Light
+                )
+            }
         }
 
         // Delete button (only show for non-main worktrees)
