@@ -1,6 +1,12 @@
 name: Release to JetBrains Marketplace
 
 on:
+  # Tag-based releases (recommended): push v1.2.3, etc.
+  push:
+    tags:
+      - 'v*'
+
+  # Optional manual run for testing the pipeline without publishing
   workflow_dispatch:
     inputs:
       channel:
@@ -11,8 +17,6 @@ on:
         description: 'Actually publish (true) or just build (false)'
         required: true
         default: 'false'
-  push:
-    branches: [ master ]
 
 # Prevent overlapping publishes
 concurrency:
@@ -57,10 +61,54 @@ jobs:
           PLUGIN_CERT_CHAIN_B64: ${{ secrets.PLUGIN_CERT_CHAIN_B64 }}
           PLUGIN_PRIVATE_KEY_B64: ${{ secrets.PLUGIN_PRIVATE_KEY_B64 }}
 
-      - name: Build plugin
-        run: ./gradlew --no-daemon buildPlugin --stacktrace
+      - name: Verify required secrets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${INTELLIJ_PLATFORM_PUBLISHING_TOKEN:-}" ]]; then
+            echo "Missing INTELLIJ_PLATFORM_PUBLISHING_TOKEN secret."
+            echo "Set it in: GitHub repo → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [[ -z "${PLUGIN_SIGNING_PASSWORD:-}" ]]; then
+            echo "Missing PLUGIN_SIGNING_PASSWORD secret."
+            echo "Set it in: GitHub repo → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        env:
+          INTELLIJ_PLATFORM_PUBLISHING_TOKEN: ${{ secrets.INTELLIJ_PLATFORM_PUBLISHING_TOKEN }}
+          PLUGIN_SIGNING_PASSWORD: ${{ secrets.PLUGIN_SIGNING_PASSWORD }}
 
-      - name: Publish to Marketplace (manual dispatch only)
+      - name: Verify tag matches Gradle version
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"          # e.g., v1.1.0
+          EXPECTED="${TAG#v}"               # 1.1.0
+          ACTUAL=$(./gradlew -q properties | sed -n 's/^version: //p' | head -n 1)
+          echo "Tag: $TAG"
+          echo "Gradle version: $ACTUAL"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "ERROR: Tag version ($EXPECTED) does not match Gradle version ($ACTUAL)."
+            echo "Bump version in build.gradle.kts, commit to master, then tag again."
+            exit 1
+          fi
+
+      - name: Build and sign plugin
+        run: ./gradlew --no-daemon clean buildPlugin signPlugin --stacktrace
+        env:
+          PLUGIN_SIGNING_PASSWORD: ${{ secrets.PLUGIN_SIGNING_PASSWORD }}
+
+      - name: Publish to Marketplace (tag push)
+        if: ${{ github.event_name == 'push' }}
+        env:
+          INTELLIJ_PLATFORM_PUBLISHING_TOKEN: ${{ secrets.INTELLIJ_PLATFORM_PUBLISHING_TOKEN }}
+          PLUGIN_SIGNING_PASSWORD: ${{ secrets.PLUGIN_SIGNING_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon publishPlugin --stacktrace
+
+      - name: Publish to Marketplace (manual dispatch)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'true' }}
         env:
           INTELLIJ_PLATFORM_PUBLISHING_TOKEN: ${{ secrets.INTELLIJ_PLATFORM_PUBLISHING_TOKEN }}
