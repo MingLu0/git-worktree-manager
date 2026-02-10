@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.9"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -42,8 +42,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Maintenance:
-            - Version bump for Marketplace release
+            Implemented click open worktree
         """.trimIndent()
     }
 
