@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.3"
+version = "1.1.4"
 
 repositories {
     mavenCentral()
@@ -47,6 +47,7 @@ intellijPlatform {
             - Improve Create Worktree UX when branch name already exists (prompt early; require rename)
             - Treat existing/registered worktree as success during Create Worktree (opens existing worktree instead of failing)
             - Fix IDE assertion by avoiding Git/auth work during branch validation on the UI thread
+            - Remove the Open button from worktree rows (double-click to open)
         """.trimIndent()
     }
 
