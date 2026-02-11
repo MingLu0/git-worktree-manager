@@ -738,7 +738,7 @@ private fun WorktreeItem(
             // and fade it in/out via alpha.
             val hintAlpha = if (isHovered) 1f else 0f
             Text(
-                text = "Tip: double-click row or use Open",
+                text = "Tip: double-click row to open", 
                 fontWeight = FontWeight.Light,
                 modifier = Modifier
                     .padding(top = 2.dp)
@@ -750,10 +750,6 @@ private fun WorktreeItem(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(onClick = onOpen, enabled = !isDeleting) {
-                Text("Open")
-            }
-
             // Delete button (only show for non-main worktrees)
             if (!worktree.isMain) {
                 OutlinedButton(onClick = onDelete, enabled = !isDeleting) {
