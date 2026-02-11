@@ -6,7 +6,7 @@ on:
       sinceMinutes:
         description: Lookback window in minutes
         required: true
-        default: '60'
+        default: '1440'
       limit:
         description: How many top items to return
         required: true
@@ -27,7 +27,7 @@ jobs:
           test -n "${NEW_RELIC_API_KEY:-}" || (echo "Missing NEW_RELIC_API_KEY" && exit 1)
           test -n "${NEW_RELIC_ACCOUNT_ID:-}" || (echo "Missing NEW_RELIC_ACCOUNT_ID" && exit 1)
 
-      - name: Query NerdGraph (account-wide)
+      - name: Query NerdGraph (custom events + discovery)
         shell: bash
         env:
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
@@ -38,7 +38,28 @@ jobs:
           set -euo pipefail
           URL="https://api.newrelic.com/graphql"
 
-          QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) { eventTypes: nrql(query: \"SHOW EVENT TYPES SINCE 1 day ago\") { results } topTx: nrql(query: \"SELECT count(*) AS calls, average(duration) AS avgDuration, percentile(duration, 95) AS p95 FROM Transaction SINCE ${SINCE_MIN} minutes ago LIMIT ${LIMIT}\") { results } topErrors: nrql(query: \"SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE ${SINCE_MIN} minutes ago FACET error.message LIMIT ${LIMIT}\") { results } topApps: nrql(query: \"SELECT count(*) AS hits FROM Transaction SINCE ${SINCE_MIN} minutes ago FACET appName LIMIT ${LIMIT}\") { results } } } }"
+          # Notes:
+          # - We keep GraphQL variables minimal, and inject SINCE/LIMIT into the NRQL strings.
+          # - keyset() helps us discover what attributes exist (e.g., durationMs, success, countryCode, etc.).
+
+          QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) {
+            eventTypes: nrql(query: \"SHOW EVENT TYPES SINCE 1 day ago\") { results }
+
+            openWorktreeKeys: nrql(query: \"SELECT keyset() FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
+            listWorktreesKeys: nrql(query: \"SELECT keyset() FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
+            createWorktreeKeys: nrql(query: \"SELECT keyset() FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
+            deleteWorktreeKeys: nrql(query: \"SELECT keyset() FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
+
+            usageOpen: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM OPEN_WORKTREE\") { results }
+            usageList: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM LIST_WORKTREES\") { results }
+            usageCreate: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM CREATE_WORKTREE\") { results }
+            usageDelete: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM DELETE_WORKTREE\") { results }
+
+            # Location attempts (will only be meaningful if those attributes exist)
+            locOpen_country: nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET countryCode LIMIT ${LIMIT}\") { results }
+            locOpen_region:  nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET regionCode LIMIT ${LIMIT}\") { results }
+            locOpen_city:    nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET city LIMIT ${LIMIT}\") { results }
+          } } }"
 
           PAYLOAD=$(QUERY="$QUERY" python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["ACCOUNT_ID"])}}))')
 
