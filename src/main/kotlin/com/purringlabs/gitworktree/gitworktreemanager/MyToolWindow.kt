@@ -36,8 +36,10 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
 import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
+import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
 import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
+import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
@@ -107,6 +109,92 @@ private fun WorktreeManagerContent(project: Project) {
             openOrFocusWorktree(project, worktree.path, TelemetryServiceImpl.getInstance())
         },
         onCreateWorktree = { name, branch ->
+            // If the branch already exists, let the user decide what to do.
+            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            if (repository != null) {
+                val gitWorktreeService = GitWorktreeService.getInstance(project)
+                if (gitWorktreeService.branchExists(repository, branch)) {
+                    val choice = Messages.showDialog(
+                        project,
+                        "Branch '$branch' already exists. What do you want to do?",
+                        "Branch Already Exists",
+                        arrayOf("Use existing branch", "Create a new branch…", "Cancel"),
+                        2,
+                        Messages.getWarningIcon()
+                    )
+
+                    when (choice) {
+                        0 -> {
+                            viewModel.createWorktree(
+                                name = name,
+                                branchName = branch,
+                                createNewBranch = false,
+                                onSuccess = { createResult ->
+                                    ApplicationManager.getApplication().invokeLater {
+                                        // Open the worktree in a new window
+                                        ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
+                                        Messages.showInfoMessage(
+                                            project,
+                                            if (createResult.created) {
+                                                "Worktree created and opened in new window!"
+                                            } else {
+                                                "Worktree already exists — opened existing worktree in new window."
+                                            },
+                                            "Success"
+                                        )
+                                    }
+                                },
+                                onError = { errorMessage ->
+                                    ApplicationManager.getApplication().invokeLater {
+                                        Messages.showErrorDialog(
+                                            project,
+                                            errorMessage,
+                                            "Error"
+                                        )
+                                    }
+                                }
+                            )
+                        }
+
+                        1 -> {
+                            val newBranchName = Messages.showInputDialog(
+                                project,
+                                "Enter a new branch name:",
+                                "Create New Branch",
+                                Messages.getQuestionIcon(),
+                                "${branch}-2",
+                                null
+                            )
+
+                            if (!newBranchName.isNullOrBlank()) {
+                                viewModel.createWorktree(
+                                    name = name,
+                                    branchName = newBranchName,
+                                    createNewBranch = true,
+                                    onSuccess = { createResult ->
+                                        ApplicationManager.getApplication().invokeLater {
+                                            ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
+                                            Messages.showInfoMessage(
+                                                project,
+                                                "Worktree created and opened in new window!",
+                                                "Success"
+                                            )
+                                        }
+                                    },
+                                    onError = { errorMessage ->
+                                        ApplicationManager.getApplication().invokeLater {
+                                            Messages.showErrorDialog(project, errorMessage, "Error")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    return@WorktreeListContent
+                }
+            }
+
             viewModel.createWorktree(
                 name = name,
                 branchName = branch,

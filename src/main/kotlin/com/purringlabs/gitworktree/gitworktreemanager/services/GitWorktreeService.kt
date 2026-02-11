@@ -27,7 +27,8 @@ class GitWorktreeService(private val project: Project) {
     fun createWorktree(
         repository: GitRepository,
         worktreeName: String,
-        branchName: String
+        branchName: String,
+        createNewBranch: Boolean = true
     ): Result<CreateWorktreeResult> {
         val git = Git.getInstance()
         val worktreePath = getWorktreePath(repository, worktreeName)
@@ -47,7 +48,12 @@ class GitWorktreeService(private val project: Project) {
         val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
         handler.addParameters("add")
         handler.addParameters(worktreePath)
-        handler.addParameters("-b", branchName)
+        if (createNewBranch) {
+            handler.addParameters("-b", branchName)
+        } else {
+            // Use existing branch
+            handler.addParameters(branchName)
+        }
 
         return try {
             val result = git.runCommand(handler)
@@ -182,6 +188,20 @@ class GitWorktreeService(private val project: Project) {
      * @param worktreeName The name for the worktree
      * @return The absolute path for the worktree
      */
+    fun branchExists(repository: GitRepository, branchName: String): Boolean {
+        val git = Git.getInstance()
+        val handler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+        handler.addParameters("--list", branchName)
+
+        return try {
+            val result = git.runCommand(handler)
+            if (!result.success()) return false
+            result.output.any { it.isNotBlank() }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun getWorktreePath(repository: GitRepository, worktreeName: String): String {
         val projectDir = File(repository.root.path)
         val projectName = projectDir.name

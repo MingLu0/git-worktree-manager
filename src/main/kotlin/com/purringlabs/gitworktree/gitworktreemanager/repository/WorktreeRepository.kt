@@ -69,7 +69,11 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @param branchName Name of the branch to create/checkout
      * @return Result indicating success or failure
      */
-    override suspend fun createWorktree(name: String, branchName: String): Result<CreateWorktreeResult> = withContext(Dispatchers.IO) {
+    override suspend fun createWorktree(
+        name: String,
+        branchName: String,
+        createNewBranch: Boolean
+    ): Result<CreateWorktreeResult> = withContext(Dispatchers.IO) {
         val operationId = UUID.randomUUID().toString()
         val startTime = System.currentTimeMillis()
 
@@ -77,7 +81,7 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
         val result: Result<CreateWorktreeResult> = if (repository == null) {
             Result.failure(NoRepositoryException("No Git repository found in project"))
         } else {
-            service.createWorktree(repository, name, branchName)
+            service.createWorktree(repository, name, branchName, createNewBranch)
         }
 
         telemetryService.recordOperation(

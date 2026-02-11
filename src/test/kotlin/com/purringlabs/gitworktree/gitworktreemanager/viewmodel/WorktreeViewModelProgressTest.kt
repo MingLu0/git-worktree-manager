@@ -172,7 +172,8 @@ class WorktreeViewModelProgressTest {
 
         override suspend fun createWorktree(
             name: String,
-            branchName: String
+            branchName: String,
+            createNewBranch: Boolean
         ): Result<com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult> = createHandler()
 
         override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = deleteHandler()

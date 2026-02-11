@@ -6,7 +6,11 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 interface WorktreeRepositoryContract {
     suspend fun fetchWorktrees(): Result<List<WorktreeInfo>>
 
-    suspend fun createWorktree(name: String, branchName: String): Result<CreateWorktreeResult>
+    suspend fun createWorktree(
+        name: String,
+        branchName: String,
+        createNewBranch: Boolean = true
+    ): Result<CreateWorktreeResult>
 
     suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit>
 }
