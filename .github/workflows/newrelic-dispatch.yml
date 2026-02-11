@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           URL="https://api.newrelic.com/graphql"
 
-          QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) { topTx: nrql(query: \"SELECT count(*) AS calls, average(duration) AS avgDuration, percentile(duration, 95) AS p95 FROM Transaction SINCE ${SINCE_MIN} minutes ago LIMIT ${LIMIT}\") { results } topErrors: nrql(query: \"SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE ${SINCE_MIN} minutes ago FACET error.message LIMIT ${LIMIT}\") { results } topApps: nrql(query: \"SELECT count(*) AS hits FROM Transaction SINCE ${SINCE_MIN} minutes ago FACET appName LIMIT ${LIMIT}\") { results } } } }"
+          QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) { eventTypes: nrql(query: \"SHOW EVENT TYPES SINCE 1 day ago\") { results } topTx: nrql(query: \"SELECT count(*) AS calls, average(duration) AS avgDuration, percentile(duration, 95) AS p95 FROM Transaction SINCE ${SINCE_MIN} minutes ago LIMIT ${LIMIT}\") { results } topErrors: nrql(query: \"SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE ${SINCE_MIN} minutes ago FACET error.message LIMIT ${LIMIT}\") { results } topApps: nrql(query: \"SELECT count(*) AS hits FROM Transaction SINCE ${SINCE_MIN} minutes ago FACET appName LIMIT ${LIMIT}\") { results } } } }"
 
           PAYLOAD=$(QUERY="$QUERY" python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["ACCOUNT_ID"])}}))')
 
