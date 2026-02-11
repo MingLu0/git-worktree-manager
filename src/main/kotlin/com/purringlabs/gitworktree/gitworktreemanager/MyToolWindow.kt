@@ -389,11 +389,17 @@ private fun WorktreeManagerContent(project: Project) {
             val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
                 ?: return@WorktreeListContent initialBranch
 
-            val gitWorktreeService = GitWorktreeService.getInstance(project)
+            // IMPORTANT: do NOT run Git commands on the EDT.
+            // Checking local branch existence should be done via repository state (not `git branch`),
+            // otherwise Git may trigger auth helpers that assert when invoked from the UI thread.
             var branchName = initialBranch
 
+            fun branchAlreadyExists(name: String): Boolean {
+                return repository.branches.localBranches.any { it.name == name }
+            }
+
             while (true) {
-                if (!gitWorktreeService.branchExists(repository, branchName)) {
+                if (!branchAlreadyExists(branchName)) {
                     return@WorktreeListContent branchName
                 }
 
