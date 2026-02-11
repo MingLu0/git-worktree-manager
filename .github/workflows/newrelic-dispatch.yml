@@ -50,15 +50,16 @@ jobs:
             createWorktreeKeys: nrql(query: \"SELECT keyset() FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
             deleteWorktreeKeys: nrql(query: \"SELECT keyset() FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
 
-            usageOpen: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM OPEN_WORKTREE\") { results }
-            usageList: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM LIST_WORKTREES\") { results }
-            usageCreate: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM CREATE_WORKTREE\") { results }
-            usageDelete: nrql(query: \"SELECT count(*) AS count SINCE ${SINCE_MIN} minutes ago FROM DELETE_WORKTREE\") { results }
+            usageOpen: nrql(query: \"SELECT count(*) AS count FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+            usageList: nrql(query: \"SELECT count(*) AS count FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago\") { results }
+            usageCreate: nrql(query: \"SELECT count(*) AS count FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+            usageDelete: nrql(query: \"SELECT count(*) AS count FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
 
-            # Location attempts (will only be meaningful if those attributes exist)
-            locOpen_country: nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET countryCode LIMIT ${LIMIT}\") { results }
-            locOpen_region:  nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET regionCode LIMIT ${LIMIT}\") { results }
-            locOpen_city:    nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET city LIMIT ${LIMIT}\") { results }
+            # Location (based on discovered attribute: country_code)
+            locOpen_country: nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
+            locCreate_country: nrql(query: \"SELECT count(*) AS hits FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
+            locList_country: nrql(query: \"SELECT count(*) AS hits FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
+            locDelete_country: nrql(query: \"SELECT count(*) AS hits FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
           } } }"
 
           PAYLOAD=$(QUERY="$QUERY" python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["ACCOUNT_ID"])}}))')
