@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.0.9"
+version = "1.1.1"
 
 repositories {
     mavenCentral()
@@ -42,8 +42,8 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Maintenance:
-            - Version bump for Marketplace release
+            Fixes:
+            - Add explicit Open button for worktree rows (more reliable than double-click)
         """.trimIndent()
     }
 
