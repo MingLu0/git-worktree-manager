@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.2"
+version = "1.1.3"
 
 repositories {
     mavenCentral()
@@ -46,6 +46,7 @@ intellijPlatform {
             - Improve Create Worktree UX when the target worktree folder already exists (prompt early; default opens existing)
             - Improve Create Worktree UX when branch name already exists (prompt early; require rename)
             - Treat existing/registered worktree as success during Create Worktree (opens existing worktree instead of failing)
+            - Fix IDE assertion by avoiding Git/auth work during branch validation on the UI thread
         """.trimIndent()
     }
 
