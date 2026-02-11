@@ -27,7 +27,7 @@ jobs:
           test -n "${NEW_RELIC_API_KEY:-}" || (echo "Missing NEW_RELIC_API_KEY" && exit 1)
           test -n "${NEW_RELIC_ACCOUNT_ID:-}" || (echo "Missing NEW_RELIC_ACCOUNT_ID" && exit 1)
 
-      - name: Query NerdGraph (custom events + discovery)
+      - name: Query NerdGraph (A/B/C snapshot)
         shell: bash
         env:
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
@@ -38,28 +38,48 @@ jobs:
           set -euo pipefail
           URL="https://api.newrelic.com/graphql"
 
-          # Notes:
-          # - We keep GraphQL variables minimal, and inject SINCE/LIMIT into the NRQL strings.
-          # - keyset() helps us discover what attributes exist (e.g., durationMs, success, countryCode, etc.).
+          # A = usage, B = failures, C = performance
+          # NOTE: country_code is based on JVM Locale, not IP geo.
 
           QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) {
             eventTypes: nrql(query: \"SHOW EVENT TYPES SINCE 1 day ago\") { results }
 
+            # --- Discovery: what attributes exist ---
             openWorktreeKeys: nrql(query: \"SELECT keyset() FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
             listWorktreesKeys: nrql(query: \"SELECT keyset() FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
             createWorktreeKeys: nrql(query: \"SELECT keyset() FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
             deleteWorktreeKeys: nrql(query: \"SELECT keyset() FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago LIMIT 50\") { results }
 
-            usageOpen: nrql(query: \"SELECT count(*) AS count FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
-            usageList: nrql(query: \"SELECT count(*) AS count FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago\") { results }
+            # --- A: Usage totals ---
+            usageOpen:   nrql(query: \"SELECT count(*) AS count FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+            usageList:   nrql(query: \"SELECT count(*) AS count FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago\") { results }
             usageCreate: nrql(query: \"SELECT count(*) AS count FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
             usageDelete: nrql(query: \"SELECT count(*) AS count FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
 
-            # Location (based on discovered attribute: country_code)
-            locOpen_country: nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
-            locCreate_country: nrql(query: \"SELECT count(*) AS hits FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
-            locList_country: nrql(query: \"SELECT count(*) AS hits FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
-            locDelete_country: nrql(query: \"SELECT count(*) AS hits FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
+            # A: Usage by plugin_version (top) ---
+            usageOpenByVersion:   nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET plugin_version LIMIT ${LIMIT}\") { results }
+            usageListByVersion:   nrql(query: \"SELECT count(*) AS hits FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago FACET plugin_version LIMIT ${LIMIT}\") { results }
+            usageCreateByVersion: nrql(query: \"SELECT count(*) AS hits FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET plugin_version LIMIT ${LIMIT}\") { results }
+            usageDeleteByVersion: nrql(query: \"SELECT count(*) AS hits FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET plugin_version LIMIT ${LIMIT}\") { results }
+
+            # A: Location (country_code) ---
+            locAllCountries: nrql(query: \"SELECT count(*) AS hits FROM OPEN_WORKTREE, LIST_WORKTREES, CREATE_WORKTREE, DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET country_code LIMIT ${LIMIT}\") { results }
+
+            # --- B: Failures (success = false) ---
+            openFailures:   nrql(query: \"SELECT count(*) AS failures FROM OPEN_WORKTREE WHERE success = false SINCE ${SINCE_MIN} minutes ago\") { results }
+            listFailures:   nrql(query: \"SELECT count(*) AS failures FROM LIST_WORKTREES WHERE success = false SINCE ${SINCE_MIN} minutes ago\") { results }
+            createFailures: nrql(query: \"SELECT count(*) AS failures FROM CREATE_WORKTREE WHERE success = false SINCE ${SINCE_MIN} minutes ago\") { results }
+            deleteFailures: nrql(query: \"SELECT count(*) AS failures FROM DELETE_WORKTREE WHERE success = false SINCE ${SINCE_MIN} minutes ago\") { results }
+
+            topFailureMessages: nrql(query: \"SELECT count(*) AS hits FROM CREATE_WORKTREE, LIST_WORKTREES, DELETE_WORKTREE WHERE success = false SINCE ${SINCE_MIN} minutes ago FACET error_type, error_message LIMIT ${LIMIT}\") { results }
+
+            # --- C: Performance (duration_ms) ---
+            openPerf:   nrql(query: \"SELECT average(duration_ms) AS avgMs, percentile(duration_ms, 95) AS p95Ms, max(duration_ms) AS maxMs FROM OPEN_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+            listPerf:   nrql(query: \"SELECT average(duration_ms) AS avgMs, percentile(duration_ms, 95) AS p95Ms, max(duration_ms) AS maxMs FROM LIST_WORKTREES SINCE ${SINCE_MIN} minutes ago\") { results }
+            createPerf: nrql(query: \"SELECT average(duration_ms) AS avgMs, percentile(duration_ms, 95) AS p95Ms, max(duration_ms) AS maxMs FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+            deletePerf: nrql(query: \"SELECT average(duration_ms) AS avgMs, percentile(duration_ms, 95) AS p95Ms, max(duration_ms) AS maxMs FROM DELETE_WORKTREE SINCE ${SINCE_MIN} minutes ago\") { results }
+
+            slowestCreate: nrql(query: \"SELECT max(duration_ms) AS maxMs FROM CREATE_WORKTREE SINCE ${SINCE_MIN} minutes ago FACET git_command, error_type, error_message, plugin_version, os_name, ide_version LIMIT ${LIMIT}\") { results }
           } } }"
 
           PAYLOAD=$(QUERY="$QUERY" python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["ACCOUNT_ID"])}}))')
