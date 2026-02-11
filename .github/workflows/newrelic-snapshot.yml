@@ -1,0 +1,118 @@
+name: New Relic Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      sinceMinutes:
+        description: 'Lookback window in minutes'
+        required: true
+        default: '60'
+      limit:
+        description: 'How many top items to return'
+        required: true
+        default: '10'
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${NEW_RELIC_API_KEY:-}" ]]; then
+            echo "Missing NEW_RELIC_API_KEY secret"
+            exit 1
+          fi
+          if [[ -z "${NEW_RELIC_ACCOUNT_ID:-}" ]]; then
+            echo "Missing NEW_RELIC_ACCOUNT_ID secret"
+            exit 1
+          fi
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+
+      - name: Query NerdGraph (top transactions + recent errors)
+        shell: bash
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          SINCE_MIN: ${{ inputs.sinceMinutes }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+
+          # NerdGraph endpoint
+          URL="https://api.newrelic.com/graphql"
+
+          # We don’t know your exact entity/app name yet, so this snapshot is account-wide.
+          # Next iteration: add an input for entityGuid / appName and narrow queries.
+
+          QUERY=$(cat <<'GRAPHQL'
+          query($accountId: Int!, $since: NrqlDateTime!, $limit: Int!) {
+            actor {
+              account(id: $accountId) {
+                # Most active transactions across the account
+                topTx: nrql(query: "SELECT count(*) AS calls, average(duration) AS avgDuration FROM Transaction SINCE $since LIMIT $limit") {
+                  results
+                }
+                # Recent error messages
+                topErrors: nrql(query: "SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE $since FACET error.message LIMIT $limit") {
+                  results
+                }
+              }
+            }
+          }
+GRAPHQL
+          )
+
+          # Convert sinceMinutes -> absolute since expression for NRQL.
+          # NerdGraph variables support NRQL time strings via $since in the query string.
+          # We pass `SINCE <N> minutes ago` as a string embedded directly.
+
+          SINCE_EXPR="${SINCE_MIN} minutes ago"
+
+          # NerdGraph variables
+          PAYLOAD=$(jq -n \
+            --arg query "$QUERY" \
+            --argjson accountId "$NEW_RELIC_ACCOUNT_ID" \
+            --arg since "$SINCE_EXPR" \
+            --argjson limit "$LIMIT" \
+            '{query: $query, variables: {accountId: $accountId, since: $since, limit: $limit}}')
+
+          # jq isn’t guaranteed installed on runner? It is on ubuntu-latest, but keep it explicit.
+
+          echo "Requesting snapshot (since: $SINCE_EXPR, limit: $LIMIT)"
+
+          curl -sS -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "API-Key: $NEW_RELIC_API_KEY" \
+            --data "$PAYLOAD" \
+            | tee nerdgraph.json
+
+      - name: Render summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "## New Relic Snapshot" > summary.md
+          echo "" >> summary.md
+          echo "### Top transactions (account-wide)" >> summary.md
+          echo '```json' >> summary.md
+          jq '.data.actor.account.topTx.results' nerdgraph.json >> summary.md
+          echo '```' >> summary.md
+          echo "" >> summary.md
+          echo "### Top errors (TransactionError)" >> summary.md
+          echo '```json' >> summary.md
+          jq '.data.actor.account.topErrors.results' nerdgraph.json >> summary.md
+          echo '```' >> summary.md
+
+          cat summary.md
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: newrelic-snapshot
+          path: |
+            nerdgraph.json
+            summary.md
