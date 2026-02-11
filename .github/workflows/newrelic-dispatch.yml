@@ -31,20 +31,25 @@ jobs:
         shell: bash
         env:
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
-          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
           SINCE_MIN: ${{ inputs.sinceMinutes }}
           LIMIT: ${{ inputs.limit }}
-          QUERY: >-
-            query($accountId: Int!, $limit: Int!, $sinceMinutes: Int!) { actor { account(id: $accountId) { topTx: nrql(query: "SELECT count(*) AS calls, average(duration) AS avgDuration, percentile(duration, 95) AS p95 FROM Transaction SINCE $sinceMinutes minutes ago LIMIT $limit") { results } topErrors: nrql(query: "SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE $sinceMinutes minutes ago FACET error.message LIMIT $limit") { results } topApps: nrql(query: "SELECT count(*) AS hits FROM Transaction SINCE $sinceMinutes minutes ago FACET appName LIMIT $limit") { results } } } }
         run: |
           set -euo pipefail
           URL="https://api.newrelic.com/graphql"
-          PAYLOAD=$(python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["NEW_RELIC_ACCOUNT_ID"]), "limit": int(os.environ["LIMIT"]), "sinceMinutes": int(os.environ["SINCE_MIN"])}}))')
-          curl -sS -X POST "$URL" -H "Content-Type: application/json" -H "API-Key: $NEW_RELIC_API_KEY" --data "$PAYLOAD" | tee nerdgraph.json
+
+          QUERY="query(\$accountId: Int!) { actor { account(id: \$accountId) { topTx: nrql(query: \"SELECT count(*) AS calls, average(duration) AS avgDuration, percentile(duration, 95) AS p95 FROM Transaction SINCE ${SINCE_MIN} minutes ago LIMIT ${LIMIT}\") { results } topErrors: nrql(query: \"SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE ${SINCE_MIN} minutes ago FACET error.message LIMIT ${LIMIT}\") { results } topApps: nrql(query: \"SELECT count(*) AS hits FROM Transaction SINCE ${SINCE_MIN} minutes ago FACET appName LIMIT ${LIMIT}\") { results } } } }"
+
+          PAYLOAD=$(QUERY="$QUERY" python3 -c 'import json,os; print(json.dumps({"query": os.environ["QUERY"], "variables": {"accountId": int(os.environ["ACCOUNT_ID"])}}))')
+
+          curl -sS -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "API-Key: $NEW_RELIC_API_KEY" \
+            --data "$PAYLOAD" \
+            | tee nerdgraph.json
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: newrelic-snapshot
-          path: |
-            nerdgraph.json
+          path: nerdgraph.json
