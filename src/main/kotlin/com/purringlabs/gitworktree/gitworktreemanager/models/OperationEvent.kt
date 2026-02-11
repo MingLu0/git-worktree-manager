@@ -67,3 +67,16 @@ data class CopyFilesEvent(
 ) : OperationEvent {
     override val operationType: String = "COPY_FILES"
 }
+
+@Serializable
+data class OpenWorktreeEvent(
+    override val operationId: String,
+    override val startTime: Long,
+    override val durationMs: Long,
+    override val success: Boolean,
+    override val context: TelemetryContext,
+    val worktreePath: String,
+    val alreadyOpen: Boolean
+) : OperationEvent {
+    override val operationType: String = "OPEN_WORKTREE"
+}

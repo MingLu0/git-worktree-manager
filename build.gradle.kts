@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.0"
+version = "1.1.1"
 
 repositories {
     mavenCentral()
@@ -42,6 +42,8 @@ intellijPlatform {
         }
 
         changeNotes = """
+            Fixes:
+            - Add explicit Open button for worktree rows (more reliable than double-click)
             Implemented click open worktree
         """.trimIndent()
     }

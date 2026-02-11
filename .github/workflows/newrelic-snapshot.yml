@@ -1,0 +1,22 @@
+name: New Relic Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      sinceMinutes:
+        description: Lookback window in minutes
+        required: true
+        default: '60'
+      limit:
+        description: How many top items to return
+        required: true
+        default: '10'
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call dispatch workflow
+        run: |
+          echo "Use the New Relic Snapshot (Dispatch) workflow instead."
