@@ -1,0 +1,118 @@
+name: New Relic Snapshot (Dispatch)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sinceMinutes:
+        description: 'Lookback window in minutes'
+        required: true
+        default: '60'
+      limit:
+        description: 'How many top items to return'
+        required: true
+        default: '10'
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${NEW_RELIC_API_KEY:-}" ]]; then
+            echo "Missing NEW_RELIC_API_KEY secret"
+            exit 1
+          fi
+          if [[ -z "${NEW_RELIC_ACCOUNT_ID:-}" ]]; then
+            echo "Missing NEW_RELIC_ACCOUNT_ID secret"
+            exit 1
+          fi
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+
+      - name: Query NerdGraph (top transactions + recent errors)
+        shell: bash
+        env:
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          SINCE_MIN: ${{ inputs.sinceMinutes }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          set -euo pipefail
+          URL="https://api.newrelic.com/graphql"
+
+          # Account-wide snapshot (we can narrow by entity later)
+          QUERY=$(cat <<'GRAPHQL'
+          query($accountId: Int!, $limit: Int!, $sinceMinutes: Int!) {
+            actor {
+              account(id: $accountId) {
+                topTx: nrql(query: "SELECT count(*) AS calls, average(duration) AS avgDuration FROM Transaction SINCE $sinceMinutes minutes ago LIMIT $limit") {
+                  results
+                }
+                topErrors: nrql(query: "SELECT count(*) AS hits, latest(timestamp) AS lastSeen FROM TransactionError SINCE $sinceMinutes minutes ago FACET error.message LIMIT $limit") {
+                  results
+                }
+              }
+            }
+          }
+GRAPHQL
+          )
+
+          PAYLOAD=$(python3 - <<PY
+import json, os
+payload={
+  'query': os.environ['QUERY'],
+  'variables': {
+    'accountId': int(os.environ['NEW_RELIC_ACCOUNT_ID']),
+    'limit': int(os.environ['LIMIT']),
+    'sinceMinutes': int(os.environ['SINCE_MIN']),
+  }
+}
+print(json.dumps(payload))
+PY
+          )
+
+          echo "Requesting snapshot (since: ${SINCE_MIN} minutes, limit: ${LIMIT})"
+
+          curl -sS -X POST "$URL" \
+            -H "Content-Type: application/json" \
+            -H "API-Key: $NEW_RELIC_API_KEY" \
+            --data "$PAYLOAD" \
+            | tee nerdgraph.json
+
+      - name: Render summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "## New Relic Snapshot" > summary.md
+          echo "" >> summary.md
+          echo "### Top transactions (account-wide)" >> summary.md
+          echo '```json' >> summary.md
+          python3 - <<'PY'
+import json
+j=json.load(open('nerdgraph.json'))
+print(json.dumps(j['data']['actor']['account']['topTx']['results'], indent=2))
+PY
+          echo '```' >> summary.md
+          echo "" >> summary.md
+          echo "### Top errors (TransactionError)" >> summary.md
+          echo '```json' >> summary.md
+          python3 - <<'PY'
+import json
+j=json.load(open('nerdgraph.json'))
+print(json.dumps(j['data']['actor']['account']['topErrors']['results'], indent=2))
+PY
+          echo '```' >> summary.md
+
+          cat summary.md
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: newrelic-snapshot
+          path: |
+            nerdgraph.json
+            summary.md
