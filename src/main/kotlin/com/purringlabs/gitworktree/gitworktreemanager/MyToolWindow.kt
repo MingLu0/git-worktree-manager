@@ -110,13 +110,17 @@ private fun WorktreeManagerContent(project: Project) {
             viewModel.createWorktree(
                 name = name,
                 branchName = branch,
-                onSuccess = { worktreePath ->
+                onSuccess = { createResult ->
                     ApplicationManager.getApplication().invokeLater {
                         // Open the worktree in a new window
-                        ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                        ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
                         Messages.showInfoMessage(
                             project,
-                            "Worktree created and opened in new window!",
+                            if (createResult.created) {
+                                "Worktree created and opened in new window!"
+                            } else {
+                                "Worktree already exists — opened existing worktree in new window."
+                            },
                             "Success"
                         )
                     }
@@ -163,12 +167,16 @@ private fun WorktreeManagerContent(project: Project) {
                     viewModel.createWorktree(
                         name = name,
                         branchName = branch,
-                        onSuccess = { worktreePath ->
+                        onSuccess = { createResult ->
                             ApplicationManager.getApplication().invokeLater {
-                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                                ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
                                 Messages.showInfoMessage(
                                     project,
-                                    "Worktree created and opened in new window!",
+                                    if (createResult.created) {
+                                        "Worktree created and opened in new window!"
+                                    } else {
+                                        "Worktree already exists — opened existing worktree in new window."
+                                    },
                                     "Success"
                                 )
                             }
@@ -203,10 +211,10 @@ private fun WorktreeManagerContent(project: Project) {
                         worktreeName = name,
                         branchName = branch,
                         selectedFiles = selectedFiles,
-                        onSuccess = { worktreePath ->
+                        onSuccess = { createResult ->
                             ApplicationManager.getApplication().invokeLater {
                                 // Open the worktree in a new window
-                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                                ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
 
                                 // Show copy results if available
                                 val copyResult = viewModel.state.copyResult
@@ -217,7 +225,11 @@ private fun WorktreeManagerContent(project: Project) {
 
                                 Messages.showInfoMessage(
                                     project,
-                                    "Worktree created and opened in new window!",
+                                    if (createResult.created) {
+                                        "Worktree created and opened in new window!"
+                                    } else {
+                                        "Worktree already exists — opened existing worktree in new window."
+                                    },
                                     "Success"
                                 )
                             }
@@ -237,12 +249,16 @@ private fun WorktreeManagerContent(project: Project) {
                     viewModel.createWorktree(
                         name = name,
                         branchName = branch,
-                        onSuccess = { worktreePath ->
+                        onSuccess = { createResult ->
                             ApplicationManager.getApplication().invokeLater {
-                                ProjectUtil.openOrImport(File(worktreePath).toPath(), project, true)
+                                ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
                                 Messages.showInfoMessage(
                                     project,
-                                    "Worktree created and opened in new window!",
+                                    if (createResult.created) {
+                                        "Worktree created and opened in new window!"
+                                    } else {
+                                        "Worktree already exists — opened existing worktree in new window."
+                                    },
                                     "Success"
                                 )
                             }

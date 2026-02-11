@@ -4,6 +4,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.diagnostic.Logger
 import com.purringlabs.gitworktree.gitworktreemanager.exceptions.WorktreeOperationException
+import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import git4idea.commands.Git
@@ -27,9 +28,21 @@ class GitWorktreeService(private val project: Project) {
         repository: GitRepository,
         worktreeName: String,
         branchName: String
-    ): Result<String> {
+    ): Result<CreateWorktreeResult> {
         val git = Git.getInstance()
         val worktreePath = getWorktreePath(repository, worktreeName)
+
+        // Fast path: if the directory exists and is already registered as a worktree,
+        // treat this as success and let the caller open/focus it.
+        val existingDir = File(worktreePath)
+        if (existingDir.exists()) {
+            val existing = listWorktrees(repository)
+                .getOrNull()
+                ?.firstOrNull { it.path == worktreePath }
+            if (existing != null) {
+                return Result.success(CreateWorktreeResult(path = worktreePath, created = false))
+            }
+        }
 
         val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
         handler.addParameters("add")
@@ -39,14 +52,26 @@ class GitWorktreeService(private val project: Project) {
         return try {
             val result = git.runCommand(handler)
             if (result.success()) {
-                Result.success(worktreePath)
+                Result.success(CreateWorktreeResult(path = worktreePath, created = true))
             } else {
+                val err = result.errorOutputAsJoinedString
+
+                // If Git says it already exists, try to recover by listing worktrees and returning the existing one.
+                if (err.lowercase().contains("already exists")) {
+                    val existing = listWorktrees(repository)
+                        .getOrNull()
+                        ?.firstOrNull { it.path == worktreePath }
+                    if (existing != null) {
+                        return Result.success(CreateWorktreeResult(path = worktreePath, created = false))
+                    }
+                }
+
                 Result.failure(
                     WorktreeOperationException(
                         message = "Failed to create worktree '$worktreeName'",
                         gitCommand = handler.printableCommandLine(),
                         gitExitCode = result.exitCode,
-                        gitErrorOutput = result.errorOutputAsJoinedString
+                        gitErrorOutput = err
                     )
                 )
             }

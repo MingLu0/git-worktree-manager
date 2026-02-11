@@ -76,16 +76,16 @@ class WorktreeViewModel(
     fun createWorktree(
         name: String,
         branchName: String,
-        onSuccess: (String) -> Unit,
+        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult) -> Unit,
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
             state = state.copy(isCreating = true, error = null)
             try {
                 repository.createWorktree(name, branchName)
-                    .onSuccess { worktreePath ->
+                    .onSuccess { result ->
                         refreshWorktrees()
-                        onSuccess(worktreePath)
+                        onSuccess(result)
                     }
                     .onFailure { error ->
                         onError(error.message ?: "Failed to create worktree")
@@ -161,7 +161,7 @@ class WorktreeViewModel(
         worktreeName: String,
         branchName: String,
         selectedFiles: List<IgnoredFileInfo>,
-        onSuccess: (String) -> Unit,
+        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult) -> Unit,
         onError: (String) -> Unit
     ) {
         coroutineScope.launch {
@@ -169,7 +169,7 @@ class WorktreeViewModel(
             try {
                 // 1. Create worktree (existing logic)
                 repository.createWorktree(worktreeName, branchName)
-                    .onSuccess { worktreePath ->
+                    .onSuccess { result ->
                         // 2. If files selected, copy them
                         if (selectedFiles.any { it.selected }) {
                             coroutineScope.launch {
@@ -177,7 +177,7 @@ class WorktreeViewModel(
                             }
                         }
                         refreshWorktrees()
-                        onSuccess(worktreePath)
+                        onSuccess(result)
                     }
                     .onFailure { error ->
                         onError(error.message ?: "Failed to create worktree")

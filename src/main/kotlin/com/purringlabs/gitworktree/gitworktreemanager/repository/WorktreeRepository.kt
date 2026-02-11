@@ -3,6 +3,7 @@ package com.purringlabs.gitworktree.gitworktreemanager.repository
 import com.intellij.openapi.project.Project
 import com.purringlabs.gitworktree.gitworktreemanager.exceptions.NoRepositoryException
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ListWorktreesEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
@@ -68,16 +69,17 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @param branchName Name of the branch to create/checkout
      * @return Result indicating success or failure
      */
-    override suspend fun createWorktree(name: String, branchName: String): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun createWorktree(name: String, branchName: String): Result<CreateWorktreeResult> = withContext(Dispatchers.IO) {
         val operationId = UUID.randomUUID().toString()
         val startTime = System.currentTimeMillis()
 
         val repository = currentRepository
-        val result = if (repository == null) {
+        val result: Result<CreateWorktreeResult> = if (repository == null) {
             Result.failure(NoRepositoryException("No Git repository found in project"))
         } else {
             service.createWorktree(repository, name, branchName)
         }
+
         telemetryService.recordOperation(
             CreateWorktreeEvent(
                 operationId = operationId,
