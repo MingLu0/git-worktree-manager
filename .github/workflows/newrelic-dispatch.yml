@@ -1,6 +1,6 @@
 name: New Relic Snapshot (Dispatch)
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       sinceMinutes:
