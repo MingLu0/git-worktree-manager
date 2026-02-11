@@ -113,88 +113,7 @@ private fun WorktreeManagerContent(project: Project) {
             if (repository != null) {
                 val gitWorktreeService = GitWorktreeService.getInstance(project)
 
-                // Folder-exists prompting is handled upfront (right after entering the worktree name).
-                // Here we only handle the branch-exists decision.
-                if (gitWorktreeService.branchExists(repository, branch)) {
-                    val choice = Messages.showDialog(
-                        project,
-                        "Branch '$branch' already exists. What do you want to do?",
-                        "Branch Already Exists",
-                        arrayOf("Use existing branch", "Create a new branch…", "Cancel"),
-                        2,
-                        Messages.getWarningIcon()
-                    )
-
-                    when (choice) {
-                        0 -> {
-                            viewModel.createWorktree(
-                                name = name,
-                                branchName = branch,
-                                createNewBranch = false,
-                                onSuccess = { createResult ->
-                                    ApplicationManager.getApplication().invokeLater {
-                                        // Open the worktree in a new window
-                                        ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
-                                        Messages.showInfoMessage(
-                                            project,
-                                            if (createResult.created) {
-                                                "Worktree created and opened in new window!"
-                                            } else {
-                                                "Worktree already exists — opened existing worktree in new window."
-                                            },
-                                            "Success"
-                                        )
-                                    }
-                                },
-                                onError = { errorMessage ->
-                                    ApplicationManager.getApplication().invokeLater {
-                                        Messages.showErrorDialog(
-                                            project,
-                                            errorMessage,
-                                            "Error"
-                                        )
-                                    }
-                                }
-                            )
-                        }
-
-                        1 -> {
-                            val newBranchName = Messages.showInputDialog(
-                                project,
-                                "Enter a new branch name:",
-                                "Create New Branch",
-                                Messages.getQuestionIcon(),
-                                "${branch}-2",
-                                null
-                            )
-
-                            if (!newBranchName.isNullOrBlank()) {
-                                viewModel.createWorktree(
-                                    name = name,
-                                    branchName = newBranchName,
-                                    createNewBranch = true,
-                                    onSuccess = { createResult ->
-                                        ApplicationManager.getApplication().invokeLater {
-                                            ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
-                                            Messages.showInfoMessage(
-                                                project,
-                                                "Worktree created and opened in new window!",
-                                                "Success"
-                                            )
-                                        }
-                                    },
-                                    onError = { errorMessage ->
-                                        ApplicationManager.getApplication().invokeLater {
-                                            Messages.showErrorDialog(project, errorMessage, "Error")
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    return@WorktreeListContent
-                }
+                // Folder-exists and branch-exists prompting are handled upfront (right after entering name/branch).
             }
 
             viewModel.createWorktree(
@@ -464,7 +383,49 @@ private fun WorktreeManagerContent(project: Project) {
                 }
             }
 
-            // Unreachable in practice (loop returns on all branches), but keeps the lambda well-typed.
+            return@WorktreeListContent null
+        },
+        onValidateBranchName = { initialBranch ->
+            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+                ?: return@WorktreeListContent initialBranch
+
+            val gitWorktreeService = GitWorktreeService.getInstance(project)
+            var branchName = initialBranch
+
+            while (true) {
+                if (!gitWorktreeService.branchExists(repository, branchName)) {
+                    return@WorktreeListContent branchName
+                }
+
+                val choice = Messages.showDialog(
+                    project,
+                    "Branch '$branchName' already exists. Please choose another name.",
+                    "Branch Already Exists",
+                    arrayOf("Use another name…", "Cancel"),
+                    0,
+                    Messages.getWarningIcon()
+                )
+
+                when (choice) {
+                    0 -> {
+                        val newBranch = Messages.showInputDialog(
+                            project,
+                            "Enter a new branch name:",
+                            "Choose Another Branch Name",
+                            Messages.getQuestionIcon(),
+                            "${branchName}-2",
+                            null
+                        )
+
+                        if (newBranch.isNullOrBlank()) return@WorktreeListContent null
+                        branchName = newBranch
+                    }
+
+                    else -> return@WorktreeListContent null
+                }
+            }
+
+            // Unreachable in practice, but keeps the lambda well-typed.
             return@WorktreeListContent null
         },
         onConfirmDelete = { worktree ->
@@ -591,6 +552,7 @@ private fun WorktreeListContent(
     onRequestWorktreeName: () -> String?,
     onRequestBranchName: (defaultName: String) -> String?,
     onValidateWorktreeName: (name: String) -> String?,
+    onValidateBranchName: (branchName: String) -> String?,
     onConfirmDelete: (WorktreeInfo) -> Boolean,
     onRequestCopyIgnoredFiles: () -> Boolean
 ) {
@@ -634,7 +596,9 @@ private fun WorktreeListContent(
             if (!rawName.isNullOrBlank()) {
                 val worktreeName = onValidateWorktreeName(rawName)
                 if (!worktreeName.isNullOrBlank()) {
-                    val branchName = onRequestBranchName(worktreeName)
+                    val rawBranchName = onRequestBranchName(worktreeName)
+                if (!rawBranchName.isNullOrBlank()) {
+                    val branchName = onValidateBranchName(rawBranchName)
                     if (!branchName.isNullOrBlank()) {
                         val copyIgnoredFiles = onRequestCopyIgnoredFiles()
                         if (copyIgnoredFiles) {
@@ -643,6 +607,7 @@ private fun WorktreeListContent(
                             onCreateWorktree(worktreeName, branchName)
                         }
                     }
+                }
                 }
             }
         }, enabled = !state.isCreating && !state.isScanning) {
