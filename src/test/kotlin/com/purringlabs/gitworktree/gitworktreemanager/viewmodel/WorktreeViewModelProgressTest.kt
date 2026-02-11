@@ -26,7 +26,7 @@ class WorktreeViewModelProgressTest {
         val repository = FakeWorktreeRepository(
             createHandler = {
                 gate.await()
-                Result.success("/tmp/worktree")
+                Result.success(com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult(path = "/tmp/worktree", created = true))
             }
         )
         val viewModel = WorktreeViewModel(
@@ -163,12 +163,18 @@ class WorktreeViewModelProgressTest {
 
     private class FakeWorktreeRepository(
         private val fetchHandler: suspend () -> Result<List<WorktreeInfo>> = { Result.success(emptyList()) },
-        private val createHandler: suspend () -> Result<String> = { Result.success("/tmp/worktree") },
+        private val createHandler: suspend () -> Result<com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult> = {
+            Result.success(com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult(path = "/tmp/worktree", created = true))
+        },
         private val deleteHandler: suspend () -> Result<Unit> = { Result.success(Unit) }
     ) : WorktreeRepositoryContract {
         override suspend fun fetchWorktrees(): Result<List<WorktreeInfo>> = fetchHandler()
 
-        override suspend fun createWorktree(name: String, branchName: String): Result<String> = createHandler()
+        override suspend fun createWorktree(
+            name: String,
+            branchName: String,
+            createNewBranch: Boolean
+        ): Result<com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult> = createHandler()
 
         override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = deleteHandler()
     }

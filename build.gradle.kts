@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.1"
+version = "1.1.2"
 
 repositories {
     mavenCentral()
@@ -43,8 +43,9 @@ intellijPlatform {
 
         changeNotes = """
             Fixes:
-            - Add explicit Open button for worktree rows (more reliable than double-click)
-            Implemented click open worktree
+            - Improve Create Worktree UX when the target worktree folder already exists (prompt early; default opens existing)
+            - Improve Create Worktree UX when branch name already exists (prompt early; require rename)
+            - Treat existing/registered worktree as success during Create Worktree (opens existing worktree instead of failing)
         """.trimIndent()
     }
 
