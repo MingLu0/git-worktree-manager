@@ -6,7 +6,7 @@ on:
       dashboardName:
         description: Dashboard name
         required: true
-        default: 'Git Worktree Manager — Error Rate & NO_REPOSITORY CTA'
+        default: 'Git Worktree Manager - Error Rate & NO_REPOSITORY CTA'
       sinceDays:
         description: Lookback window in days for default charts
         required: true
@@ -50,116 +50,116 @@ jobs:
           set -euo pipefail
 
           node - <<'NODE'
-const fs = require('fs');
-const https = require('https');
+          const fs = require('fs');
+          const https = require('https');
 
-const apiKey = process.env.NEW_RELIC_API_KEY;
-const accountId = Number(process.env.NEW_RELIC_ACCOUNT_ID);
-const dashboardName = process.env.DASHBOARD_NAME;
-const sinceDays = Number(process.env.SINCE_DAYS);
+          const apiKey = process.env.NEW_RELIC_API_KEY;
+          const accountId = Number(process.env.NEW_RELIC_ACCOUNT_ID);
+          const dashboardName = process.env.DASHBOARD_NAME;
+          const sinceDays = Number(process.env.SINCE_DAYS);
 
-const schema = JSON.parse(fs.readFileSync('schema-mutations.json','utf8'));
-const fields = schema?.data?.__schema?.mutationType?.fields || [];
-const names = new Set(fields.map(f => f.name));
+          const schema = JSON.parse(fs.readFileSync('schema-mutations.json', 'utf8'));
+          const fields = schema?.data?.__schema?.mutationType?.fields || [];
+          const names = new Set(fields.map(f => f.name));
 
-// Heuristic: pick a known-ish mutation name.
-const candidates = [
-  'dashboardCreate',
-  'dashboardsCreate',
-  'dashboardUpsert',
-  'dashboardUpdate',
-  'dashboardEntityCreate'
-].filter(n => names.has(n));
+          const candidates = [
+            'dashboardCreate',
+            'dashboardsCreate',
+            'dashboardUpsert',
+            'dashboardUpdate',
+            'dashboardEntityCreate'
+          ].filter(n => names.has(n));
 
-function requestGraphql(query, variables) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ query, variables });
-    const req = https.request('https://api.newrelic.com/graphql', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'API-Key': apiKey,
-        'Content-Length': Buffer.byteLength(body)
-      }
-    }, res => {
-      let data='';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, json: JSON.parse(data) }); }
-        catch (e) { resolve({ status: res.statusCode, text: data }); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-(async () => {
-  const nrqlErrorRate = `SELECT percentage(count(*), WHERE success = false) AS 'Error rate %' FROM OPEN_WORKTREE, LIST_WORKTREES, CREATE_WORKTREE, DELETE_WORKTREE SINCE ${sinceDays} days ago TIMESERIES`;
-  const nrqlFailuresByType = `SELECT count(*) AS failures FROM OPEN_WORKTREE, LIST_WORKTREES, CREATE_WORKTREE, DELETE_WORKTREE WHERE success = false SINCE ${sinceDays} days ago FACET error_type LIMIT 10`;
-  const nrqlNoRepoCta = `SELECT count(*) AS clicks FROM NO_REPOSITORY_CTA SINCE ${sinceDays} days ago FACET cta, attempted_operation LIMIT 20`;
-
-  const dashboard = {
-    name: dashboardName,
-    description: 'Auto-generated. Tracks error rate + NO_REPOSITORY CTA usage for Git Worktree Manager.',
-    pages: [
-      {
-        name: 'Errors',
-        widgets: [
-          {
-            title: 'Error rate % (all events)',
-            visualization: { id: 'viz.line' },
-            rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlErrorRate }] }
-          },
-          {
-            title: 'Failures by error_type',
-            visualization: { id: 'viz.bar' },
-            rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlFailuresByType }] }
+          function requestGraphql(query, variables) {
+            return new Promise((resolve, reject) => {
+              const body = JSON.stringify({ query, variables });
+              const req = https.request('https://api.newrelic.com/graphql', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'API-Key': apiKey,
+                  'Content-Length': Buffer.byteLength(body)
+                }
+              }, res => {
+                let data = '';
+                res.on('data', c => data += c);
+                res.on('end', () => {
+                  try {
+                    resolve({ status: res.statusCode, json: JSON.parse(data) });
+                  } catch {
+                    resolve({ status: res.statusCode, text: data });
+                  }
+                });
+              });
+              req.on('error', reject);
+              req.write(body);
+              req.end();
+            });
           }
-        ]
-      },
-      {
-        name: 'No Repo CTA',
-        widgets: [
-          {
-            title: 'NO_REPOSITORY CTA clicks',
-            visualization: { id: 'viz.table' },
-            rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlNoRepoCta }] }
-          }
-        ]
-      }
-    ]
-  };
 
-  const report = { availableMutations: candidates, tried: null, response: null };
+          (async () => {
+            const nrqlErrorRate = `SELECT percentage(count(*), WHERE success = false) AS 'Error rate %' FROM OPEN_WORKTREE, LIST_WORKTREES, CREATE_WORKTREE, DELETE_WORKTREE SINCE ${sinceDays} days ago TIMESERIES`;
+            const nrqlFailuresByType = `SELECT count(*) AS failures FROM OPEN_WORKTREE, LIST_WORKTREES, CREATE_WORKTREE, DELETE_WORKTREE WHERE success = false SINCE ${sinceDays} days ago FACET error_type LIMIT 10`;
+            const nrqlNoRepoCta = `SELECT count(*) AS clicks FROM NO_REPOSITORY_CTA SINCE ${sinceDays} days ago FACET cta, attempted_operation LIMIT 20`;
 
-  if (candidates.length === 0) {
-    report.error = 'No known dashboard mutation found. See schema-mutations.json and adjust workflow.';
-    fs.writeFileSync('dashboard-result.json', JSON.stringify(report, null, 2));
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(1);
-  }
+            const dashboard = {
+              name: dashboardName,
+              description: 'Auto-generated. Tracks error rate + NO_REPOSITORY CTA usage for Git Worktree Manager.',
+              pages: [
+                {
+                  name: 'Errors',
+                  widgets: [
+                    {
+                      title: 'Error rate % (all events)',
+                      visualization: { id: 'viz.line' },
+                      rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlErrorRate }] }
+                    },
+                    {
+                      title: 'Failures by error_type',
+                      visualization: { id: 'viz.bar' },
+                      rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlFailuresByType }] }
+                    }
+                  ]
+                },
+                {
+                  name: 'No Repo CTA',
+                  widgets: [
+                    {
+                      title: 'NO_REPOSITORY CTA clicks',
+                      visualization: { id: 'viz.table' },
+                      rawConfiguration: { nrqlQueries: [{ accountId, query: nrqlNoRepoCta }] }
+                    }
+                  ]
+                }
+              ]
+            };
 
-  // Try dashboardCreate first. This may fail depending on schema expectations; we capture the error.
-  const mutationName = candidates[0];
-  report.tried = mutationName;
+            const report = { availableMutations: candidates, tried: null, response: null };
 
-  // Most common pattern (may need adjustment): dashboardCreate(accountId: Int!, dashboard: DashboardInput!)
-  const query = `mutation($accountId: Int!, $dashboard: DashboardInput!) { ${mutationName}(accountId: $accountId, dashboard: $dashboard) { entityResult { guid name } errors { description type } } }`;
-  const variables = { accountId, dashboard };
+            if (candidates.length === 0) {
+              report.error = 'No known dashboard mutation found. See schema-mutations.json and adjust workflow.';
+              fs.writeFileSync('dashboard-result.json', JSON.stringify(report, null, 2));
+              console.log(JSON.stringify(report, null, 2));
+              process.exit(1);
+            }
 
-  const res = await requestGraphql(query, variables);
-  report.response = res;
+            const mutationName = candidates[0];
+            report.tried = mutationName;
 
-  fs.writeFileSync('dashboard-result.json', JSON.stringify(report, null, 2));
-  console.log(JSON.stringify(report, null, 2));
+            const query = `mutation($accountId: Int!, $dashboard: DashboardInput!) { ${mutationName}(accountId: $accountId, dashboard: $dashboard) { entityResult { guid name } errors { description type } } }`;
+            const variables = { accountId, dashboard };
 
-  if (res.json?.errors || res.json?.data?.[mutationName]?.errors?.length) {
-    process.exit(1);
-  }
-})();
-NODE
+            const res = await requestGraphql(query, variables);
+            report.response = res;
+
+            fs.writeFileSync('dashboard-result.json', JSON.stringify(report, null, 2));
+            console.log(JSON.stringify(report, null, 2));
+
+            if (res.json?.errors || res.json?.data?.[mutationName]?.errors?.length) {
+              process.exit(1);
+            }
+          })();
+          NODE
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
