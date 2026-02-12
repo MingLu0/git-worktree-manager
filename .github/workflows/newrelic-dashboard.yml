@@ -27,17 +27,26 @@ jobs:
           test -n "${NEW_RELIC_API_KEY:-}" || (echo "Missing NEW_RELIC_API_KEY" && exit 1)
           test -n "${NEW_RELIC_ACCOUNT_ID:-}" || (echo "Missing NEW_RELIC_ACCOUNT_ID" && exit 1)
 
-      - name: NerdGraph introspection (discover dashboard mutations)
+      - name: NerdGraph introspection (discover dashboard schema)
         shell: bash
         env:
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
         run: |
           set -euo pipefail
+
+          # Mutation list
           curl -sS https://api.newrelic.com/graphql \
             -H 'Content-Type: application/json' \
             -H "API-Key: $NEW_RELIC_API_KEY" \
             --data '{"query":"query { __schema { mutationType { fields { name args { name type { kind name ofType { kind name ofType { kind name } } } } } } } }"}' \
             | tee schema-mutations.json
+
+          # Dashboard-related input types (for debugging exact field names)
+          curl -sS https://api.newrelic.com/graphql \
+            -H 'Content-Type: application/json' \
+            -H "API-Key: $NEW_RELIC_API_KEY" \
+            --data '{"query":"query { dashboardInput: __type(name: \"DashboardInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardWidgetInput: __type(name: \"DashboardWidgetInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardPageInput: __type(name: \"DashboardPageInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } }"}' \
+            | tee schema-dashboard-types.json
 
       - name: Create/Update dashboard via NerdGraph (best-effort)
         shell: bash
@@ -162,9 +171,11 @@ jobs:
           NODE
 
       - name: Upload artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: newrelic-dashboard
           path: |
             schema-mutations.json
+            schema-dashboard-types.json
             dashboard-result.json
