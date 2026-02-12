@@ -45,7 +45,7 @@ jobs:
           curl -sS https://api.newrelic.com/graphql \
             -H 'Content-Type: application/json' \
             -H "API-Key: $NEW_RELIC_API_KEY" \
-            --data '{"query":"query { dashboardInput: __type(name: \"DashboardInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardWidgetInput: __type(name: \"DashboardWidgetInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardPageInput: __type(name: \"DashboardPageInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetConfig: __type(name: \"DashboardWidgetConfigurationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetViz: __type(name: \"DashboardWidgetVisualizationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetLayout: __type(name: \"DashboardWidgetLayoutInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } }"}' \
+            --data '{"query":"query { dashboardInput: __type(name: \"DashboardInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardWidgetInput: __type(name: \"DashboardWidgetInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } dashboardPageInput: __type(name: \"DashboardPageInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetConfig: __type(name: \"DashboardWidgetConfigurationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetViz: __type(name: \"DashboardWidgetVisualizationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } widgetLayout: __type(name: \"DashboardWidgetLayoutInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } lineCfg: __type(name: \"DashboardWidgetLineConfigurationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } barCfg: __type(name: \"DashboardWidgetBarConfigurationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } tableCfg: __type(name: \"DashboardWidgetTableConfigurationInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } nrqlQuery: __type(name: \"DashboardNrqlQueryInput\") { name kind inputFields { name type { kind name ofType { kind name ofType { kind name } } } } } }"}' \
             | tee schema-dashboard-types.json
 
       - name: Create/Update dashboard via NerdGraph (best-effort)
@@ -122,13 +122,13 @@ jobs:
                     {
                       title: 'Error rate % (all events)',
                       visualization: { id: 'viz.line' },
-                      configuration: { nrqlQueries: [{ accountId, query: nrqlErrorRate }] },
+                      configuration: { line: { nrqlQueries: [{ accountId, query: nrqlErrorRate }] } },
                       layout: { row: 1, column: 1, width: 6, height: 3 }
                     },
                     {
                       title: 'Failures by error_type',
                       visualization: { id: 'viz.bar' },
-                      configuration: { nrqlQueries: [{ accountId, query: nrqlFailuresByType }] },
+                      configuration: { bar: { nrqlQueries: [{ accountId, query: nrqlFailuresByType }] } },
                       layout: { row: 1, column: 7, width: 6, height: 3 }
                     }
                   ]
@@ -139,7 +139,7 @@ jobs:
                     {
                       title: 'NO_REPOSITORY CTA clicks',
                       visualization: { id: 'viz.table' },
-                      configuration: { nrqlQueries: [{ accountId, query: nrqlNoRepoCta }] },
+                      configuration: { table: { nrqlQueries: [{ accountId, query: nrqlNoRepoCta }] } },
                       layout: { row: 4, column: 1, width: 12, height: 4 }
                     }
                   ]
