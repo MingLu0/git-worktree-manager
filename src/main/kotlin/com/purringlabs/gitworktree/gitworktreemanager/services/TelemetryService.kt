@@ -13,6 +13,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ListWorktreesEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.NoRepositoryCtaEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.OperationEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
@@ -192,6 +193,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
             is OpenWorktreeEvent -> {
                 builder.put("worktree_path", operation.worktreePath)
                 builder.put("already_open", operation.alreadyOpen)
+            }
+            is NoRepositoryCtaEvent -> {
+                builder.put("attempted_operation", operation.attemptedOperation)
+                builder.put("cta", operation.cta)
             }
         }
     }

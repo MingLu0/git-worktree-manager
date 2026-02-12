@@ -31,16 +31,19 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
+import com.purringlabs.gitworktree.gitworktreemanager.models.NoRepositoryCtaEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepository
 import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperationsService
 import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
 import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesService
+import com.purringlabs.gitworktree.gitworktreemanager.services.NoRepositoryUiHelper
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
-import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
+import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
@@ -103,6 +106,15 @@ private fun WorktreeManagerContent(project: Project) {
     WorktreeListContent(
         state = viewModel.state,
         onRefresh = {
+            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            if (repository == null) {
+                NoRepositoryUiHelper.showNoRepositoryDialog(
+                    project = project,
+                    attemptedOperation = "LIST_WORKTREES",
+                    telemetry = TelemetryServiceImpl.getInstance()
+                )
+                return@WorktreeListContent
+            }
             viewModel.refreshWorktrees()
         },
         onOpenWorktree = { worktree ->
@@ -110,11 +122,16 @@ private fun WorktreeManagerContent(project: Project) {
         },
         onCreateWorktree = { name, branch ->
             val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
-            if (repository != null) {
-                val gitWorktreeService = GitWorktreeService.getInstance(project)
-
-                // Folder-exists and branch-exists prompting are handled upfront (right after entering name/branch).
+            if (repository == null) {
+                NoRepositoryUiHelper.showNoRepositoryDialog(
+                    project = project,
+                    attemptedOperation = "CREATE_WORKTREE",
+                    telemetry = TelemetryServiceImpl.getInstance()
+                )
+                return@WorktreeListContent
             }
+
+            // Folder-exists and branch-exists prompting are handled upfront (right after entering name/branch).
 
             viewModel.createWorktree(
                 name = name,
@@ -146,6 +163,16 @@ private fun WorktreeManagerContent(project: Project) {
             )
         },
         onCreateWorktreeWithIgnoredFiles = { name, branch ->
+            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            if (repository == null) {
+                NoRepositoryUiHelper.showNoRepositoryDialog(
+                    project = project,
+                    attemptedOperation = "CREATE_WORKTREE",
+                    telemetry = TelemetryServiceImpl.getInstance()
+                )
+                return@WorktreeListContent
+            }
+
             coroutineScope.launch {
                 // Step 1: Scan for ignored files
                 viewModel.scanIgnoredFiles()
