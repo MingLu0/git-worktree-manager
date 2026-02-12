@@ -151,6 +151,12 @@ This plugin is built with:
 ./gradlew runIde
 ```
 
+## Support
+
+If this plugin saves you time, consider sponsoring to help me maintain it — you’ll be buying my cats a treat.
+
+Support link: https://github.com/sponsors/MingLu0
+
 ## License
 
 MIT License - See LICENSE file for details
