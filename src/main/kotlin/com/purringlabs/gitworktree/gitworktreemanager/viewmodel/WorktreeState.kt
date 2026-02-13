@@ -9,6 +9,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
  */
 data class WorktreeState(
     val worktrees: List<WorktreeInfo> = emptyList(),
+    val searchQuery: String = "",
     val isLoading: Boolean = false,
     val isCreating: Boolean = false,
     val deletingWorktreePath: String? = null,

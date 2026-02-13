@@ -30,6 +30,10 @@ class WorktreeViewModel(
         private set
     private val autoRefreshDebouncer = WorktreeRefreshDebouncer(coroutineScope) { refreshWorktrees() }
 
+    fun setSearchQuery(query: String) {
+        state = state.copy(searchQuery = query)
+    }
+
     /**
      * Refreshes the list of worktrees from the repository
      */

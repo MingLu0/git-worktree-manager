@@ -2,11 +2,14 @@ package com.purringlabs.gitworktree.gitworktreemanager
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -17,6 +20,7 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerMoveFilter
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.awt.SwingPanel
@@ -105,6 +109,7 @@ private fun WorktreeManagerContent(project: Project) {
 
     WorktreeListContent(
         state = viewModel.state,
+        onSearchQueryChange = viewModel::setSearchQuery,
         onRefresh = {
             val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
             if (repository == null) {
@@ -577,6 +582,7 @@ private fun openOrFocusWorktree(
 @Composable
 private fun WorktreeListContent(
     state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
+    onSearchQueryChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onOpenWorktree: (WorktreeInfo) -> Unit,
     onCreateWorktree: (name: String, branch: String) -> Unit,
@@ -656,6 +662,60 @@ private fun WorktreeListContent(
             )
         }
 
+        // Search
+        val filteredWorktrees = remember(state.worktrees, state.searchQuery) {
+            val q = state.searchQuery.trim().lowercase()
+            if (q.isBlank()) return@remember state.worktrees
+
+            state.worktrees.filter { wt ->
+                val branch = wt.branch ?: ""
+                listOf(branch, wt.path, wt.commit).any { it.lowercase().contains(q) }
+            }
+        }
+
+        val searchBorder = if (isSystemInDarkTheme()) Color(0x33FFFFFF) else Color(0x22000000)
+        val searchBg = if (isSystemInDarkTheme()) Color(0x14FFFFFF) else Color(0x0A000000)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            BasicTextField(
+                value = state.searchQuery,
+                onValueChange = onSearchQueryChange,
+                singleLine = true,
+                textStyle = TextStyle(color = if (isSystemInDarkTheme()) Color.White else Color.Black),
+                modifier = Modifier
+                    .weight(1f)
+                    .border(1.dp, searchBorder, RoundedCornerShape(8.dp))
+                    .background(searchBg, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (state.searchQuery.isBlank()) {
+                            Text(
+                                text = "Search worktrees…",
+                                fontWeight = FontWeight.Light
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+
+            OutlinedButton(
+                onClick = { onSearchQueryChange("") },
+                enabled = state.searchQuery.isNotBlank()
+            ) {
+                Text("Clear")
+            }
+
+            OutlinedButton(onClick = onRefresh, enabled = !isBusy) {
+                Text("Refresh")
+            }
+        }
+
         // Worktree list
         if (state.isLoading) {
             Box(
@@ -671,11 +731,18 @@ private fun WorktreeListContent(
             ) {
                 Text("No worktrees found")
             }
+        } else if (filteredWorktrees.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No matches")
+            }
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(state.worktrees) { worktree ->
+                items(filteredWorktrees) { worktree ->
                     WorktreeItem(
                         worktree = worktree,
                         isDeleting = state.deletingWorktreePath == worktree.path,
