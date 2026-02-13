@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.5"
+version = "1.1.6"
 
 repositories {
     mavenCentral()
@@ -50,6 +50,7 @@ intellijPlatform {
             - Remove the Open button from worktree rows (double-click to open)
             - Fail fast when no Git repository is detected and provide guidance (Open Git / Refresh / How to fix)
             - Track which no-repository CTA users choose (NO_REPOSITORY_CTA event)
+            - Add search/filter for the worktree list (search by branch/path/commit)
         """.trimIndent()
     }
 
