@@ -82,7 +82,7 @@ class WorktreeViewModel(
         branchName: String,
         createNewBranch: Boolean = true,
         onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult) -> Unit,
-        onError: (String) -> Unit
+        onError: (Throwable) -> Unit
     ) {
         coroutineScope.launch {
             state = state.copy(isCreating = true, error = null)
@@ -93,7 +93,7 @@ class WorktreeViewModel(
                         onSuccess(result)
                     }
                     .onFailure { error ->
-                        onError(error.message ?: "Failed to create worktree")
+                        onError(error)
                     }
             } finally {
                 state = state.copy(isCreating = false)
@@ -110,7 +110,7 @@ class WorktreeViewModel(
     fun deleteWorktree(
         worktreePath: String,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (Throwable) -> Unit
     ) {
         coroutineScope.launch {
             state = state.copy(deletingWorktreePath = worktreePath, error = null)
@@ -122,7 +122,7 @@ class WorktreeViewModel(
                         onSuccess()
                     }
                     .onFailure { error ->
-                        onError(error.message ?: "Failed to delete worktree")
+                        onError(error)
                     }
             } finally {
                 state = state.copy(deletingWorktreePath = null)
@@ -168,7 +168,7 @@ class WorktreeViewModel(
         createNewBranch: Boolean = true,
         selectedFiles: List<IgnoredFileInfo>,
         onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult) -> Unit,
-        onError: (String) -> Unit
+        onError: (Throwable) -> Unit
     ) {
         coroutineScope.launch {
             state = state.copy(isCreating = true, error = null)
@@ -186,7 +186,7 @@ class WorktreeViewModel(
                         onSuccess(result)
                     }
                     .onFailure { error ->
-                        onError(error.message ?: "Failed to create worktree")
+                        onError(error)
                     }
             } finally {
                 state = state.copy(isCreating = false)

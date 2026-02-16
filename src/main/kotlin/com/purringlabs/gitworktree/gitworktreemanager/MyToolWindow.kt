@@ -47,9 +47,11 @@ import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesServi
 import com.purringlabs.gitworktree.gitworktreemanager.services.NoRepositoryUiHelper
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
-import git4idea.repo.GitRepositoryManager
+import com.purringlabs.gitworktree.gitworktreemanager.services.UiErrorMapper
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
+import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.ErrorDetailsDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
+import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
@@ -65,6 +67,18 @@ import java.awt.Frame
 import java.io.File
 import java.util.UUID
 import javax.swing.JProgressBar
+
+private fun showOperationError(project: Project, error: Throwable, operation: String) {
+    val uiError = UiErrorMapper.map(error, operation)
+    ErrorDetailsDialog(
+        project = project,
+        titleText = uiError.title,
+        summary = uiError.summary,
+        actions = uiError.actions,
+        detailsText = uiError.details,
+        copyText = uiError.copyText
+    ).show()
+}
 
 private fun findValidRepository(project: Project): GitRepository? {
     return GitRepositoryManager.getInstance(project)
@@ -162,13 +176,9 @@ private fun WorktreeManagerContent(project: Project) {
                         )
                     }
                 },
-                onError = { errorMessage ->
+                onError = { error ->
                     ApplicationManager.getApplication().invokeLater {
-                        Messages.showErrorDialog(
-                            project,
-                            errorMessage,
-                            "Error"
-                        )
+                        showOperationError(project, error, operation = "CREATE_WORKTREE")
                     }
                 }
             )
@@ -228,13 +238,9 @@ private fun WorktreeManagerContent(project: Project) {
                                 )
                             }
                         },
-                        onError = { errorMessage ->
+                        onError = { error ->
                             ApplicationManager.getApplication().invokeLater {
-                                Messages.showErrorDialog(
-                                    project,
-                                    errorMessage,
-                                    "Error"
-                                )
+                                showOperationError(project, error, operation = "CREATE_WORKTREE")
                             }
                         }
                     )
@@ -281,13 +287,9 @@ private fun WorktreeManagerContent(project: Project) {
                                 )
                             }
                         },
-                        onError = { errorMessage ->
+                        onError = { error ->
                             ApplicationManager.getApplication().invokeLater {
-                                Messages.showErrorDialog(
-                                    project,
-                                    errorMessage,
-                                    "Error"
-                                )
+                                showOperationError(project, error, operation = "CREATE_WORKTREE")
                             }
                         }
                     )
@@ -310,13 +312,9 @@ private fun WorktreeManagerContent(project: Project) {
                                 )
                             }
                         },
-                        onError = { errorMessage ->
+                        onError = { error ->
                             ApplicationManager.getApplication().invokeLater {
-                                Messages.showErrorDialog(
-                                    project,
-                                    errorMessage,
-                                    "Error"
-                                )
+                                showOperationError(project, error, operation = "CREATE_WORKTREE")
                             }
                         }
                     )
@@ -335,13 +333,9 @@ private fun WorktreeManagerContent(project: Project) {
                         )
                     }
                 },
-                onError = { errorMessage ->
+                onError = { error ->
                     ApplicationManager.getApplication().invokeLater {
-                        Messages.showErrorDialog(
-                            project,
-                            errorMessage,
-                            "Error"
-                        )
+                        showOperationError(project, error, operation = "DELETE_WORKTREE")
                     }
                 }
             )
