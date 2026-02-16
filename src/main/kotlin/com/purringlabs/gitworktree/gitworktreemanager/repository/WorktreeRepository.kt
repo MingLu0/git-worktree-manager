@@ -31,7 +31,9 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
         get() = TelemetryServiceImpl.getInstance()
 
     private val currentRepository: GitRepository?
-        get() = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+        get() = GitRepositoryManager.getInstance(project)
+            .repositories
+            .firstOrNull { repo -> File(repo.root.path).exists() }
 
     /**
      * Fetches the list of worktrees
