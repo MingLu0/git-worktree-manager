@@ -66,6 +66,12 @@ import java.io.File
 import java.util.UUID
 import javax.swing.JProgressBar
 
+private fun findValidRepository(project: Project): GitRepository? {
+    return GitRepositoryManager.getInstance(project)
+        .repositories
+        .firstOrNull { repo -> File(repo.root.path).exists() }
+}
+
 class MyToolWindowFactory : ToolWindowFactory {
     override fun shouldBeAvailable(project: Project) = true
 
@@ -111,7 +117,7 @@ private fun WorktreeManagerContent(project: Project) {
         state = viewModel.state,
         onSearchQueryChange = viewModel::setSearchQuery,
         onRefresh = {
-            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            val repository = findValidRepository(project)
             if (repository == null) {
                 NoRepositoryUiHelper.showNoRepositoryDialog(
                     project = project,
@@ -126,7 +132,7 @@ private fun WorktreeManagerContent(project: Project) {
             openOrFocusWorktree(project, worktree.path, TelemetryServiceImpl.getInstance())
         },
         onCreateWorktree = { name, branch ->
-            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            val repository = findValidRepository(project)
             if (repository == null) {
                 NoRepositoryUiHelper.showNoRepositoryDialog(
                     project = project,
@@ -168,7 +174,7 @@ private fun WorktreeManagerContent(project: Project) {
             )
         },
         onCreateWorktreeWithIgnoredFiles = { name, branch ->
-            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            val repository = findValidRepository(project)
             if (repository == null) {
                 NoRepositoryUiHelper.showNoRepositoryDialog(
                     project = project,
@@ -359,7 +365,7 @@ private fun WorktreeManagerContent(project: Project) {
             )
         },
         onValidateWorktreeName = { initialName ->
-            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            val repository = findValidRepository(project)
                 ?: return@WorktreeListContent initialName
 
             val gitWorktreeService = GitWorktreeService.getInstance(project)
@@ -418,7 +424,7 @@ private fun WorktreeManagerContent(project: Project) {
             return@WorktreeListContent null
         },
         onValidateBranchName = { initialBranch ->
-            val repository = GitRepositoryManager.getInstance(project).repositories.firstOrNull()
+            val repository = findValidRepository(project)
                 ?: return@WorktreeListContent initialBranch
 
             // IMPORTANT: do NOT run Git commands on the EDT.
