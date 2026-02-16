@@ -45,17 +45,20 @@ object UiErrorMapper {
         }
 
         return when (throwable) {
-            is NoRepositoryException -> UiError(
-                title = "Git Worktree Manager — No Git repository found",
-                summary = "I couldn’t find a Git repository in this project, so I can’t manage worktrees.",
-                actions = listOf(
-                    "Open the project from a folder that contains a .git directory",
-                    "If this is a multi-module project, make sure the Git root is included in the IDE",
-                    "If you cloned the repo recently, try reopening the project"
-                ),
-                details = buildDetails(operation = operation, errorOutput = msg),
-                copyText = buildCopyText(buildDetails(operation = operation, errorOutput = msg))
-            )
+            is NoRepositoryException -> {
+                val details = buildDetails(operation = operation, errorOutput = msg)
+                UiError(
+                    title = "Git Worktree Manager — No Git repository found",
+                    summary = "I couldn’t find a Git repository in this project, so I can’t manage worktrees.",
+                    actions = listOf(
+                        "Open the project from a folder that contains a .git directory",
+                        "If this is a multi-module project, make sure the Git root is included in the IDE",
+                        "If you cloned the repo recently, try reopening the project"
+                    ),
+                    details = details,
+                    copyText = buildCopyText(details)
+                )
+            }
 
             is WorktreeOperationException -> {
                 val details = buildDetails(
@@ -138,7 +141,10 @@ object UiErrorMapper {
     }
 
     private fun sanitizePaths(input: String): String {
-        // macOS user home path redaction
-        return input.replace(Regex("/Users/[^/]+/"), "/Users/<user>/")
+        // Redact user names in common OS home paths (copy text is meant to be shareable).
+        return input
+            .replace(Regex("/Users/[^/]+/"), "/Users/<user>/")
+            .replace(Regex("C:\\\\Users\\\\[^\\\\]+\\\\"), "C:\\Users\\<user>\\")
     }
 }
+
