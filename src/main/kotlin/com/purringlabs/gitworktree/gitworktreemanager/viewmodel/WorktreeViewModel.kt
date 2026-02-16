@@ -202,10 +202,17 @@ class WorktreeViewModel(
         worktreeName: String,
         selectedFiles: List<IgnoredFileInfo>
     ) {
-        val sourceRoot = Paths.get(project.basePath ?: return)
+        // Pick a repository whose root still exists on disk.
+        // This must match the selection logic used elsewhere, otherwise we can create a worktree in one repo
+        // and copy ignored files relative to a different (or missing) repo.
+        val gitRepository = GitRepositoryManager.getInstance(project)
+            .repositories
+            .firstOrNull { repo -> java.io.File(repo.root.path).exists() }
+            ?: return
 
-        // Get the Git repository and calculate worktree path
-        val gitRepository = GitRepositoryManager.getInstance(project).repositories.firstOrNull() ?: return
+        // Copy relative to the repo root (not project.basePath), so multi-root / moved-project cases behave.
+        val sourceRoot = Paths.get(gitRepository.root.path)
+
         val gitWorktreeService = GitWorktreeService.getInstance(project)
         val destPath = gitWorktreeService.getWorktreePath(gitRepository, worktreeName)
         val destRoot = Paths.get(destPath)
