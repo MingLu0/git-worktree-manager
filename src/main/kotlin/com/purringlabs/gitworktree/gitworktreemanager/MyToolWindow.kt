@@ -375,8 +375,13 @@ private fun WorktreeManagerContent(project: Project) {
 
                 // IMPORTANT: do NOT run Git commands on the EDT.
                 // Git authentication may need the IDE built-in server; waiting for it on the EDT triggers an assertion.
-                val existingWorktree = listWorktreesInBackground(project, repository)
-                    ?.firstOrNull { it.path == path }
+                val existingWorktree = try {
+                    listWorktreesInBackground(project, repository)
+                        ?.firstOrNull { it.path == path }
+                } catch (_: ProcessCanceledException) {
+                    // User cancelled validation; treat as cancel.
+                    return@WorktreeListContent null
+                }
 
                 val choice = Messages.showDialog(
                     project,
