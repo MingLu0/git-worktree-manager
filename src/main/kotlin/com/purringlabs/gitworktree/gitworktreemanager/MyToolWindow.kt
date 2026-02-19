@@ -30,6 +30,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.ThrowableComputable
@@ -535,6 +536,8 @@ private fun listWorktreesInBackground(project: Project, repository: GitRepositor
             true,
             project
         )
+    } catch (e: ProcessCanceledException) {
+        throw e
     } catch (_: Exception) {
         null
     }
