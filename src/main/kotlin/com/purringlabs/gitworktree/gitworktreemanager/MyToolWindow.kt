@@ -30,7 +30,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindow
@@ -370,9 +373,15 @@ private fun WorktreeManagerContent(project: Project) {
                 val existingDir = File(path)
                 if (!existingDir.exists()) return@WorktreeListContent name
 
-                val existingWorktree = gitWorktreeService.listWorktrees(repository)
-                    .getOrNull()
-                    ?.firstOrNull { it.path == path }
+                // IMPORTANT: do NOT run Git commands on the EDT.
+                // Git authentication may need the IDE built-in server; waiting for it on the EDT triggers an assertion.
+                val existingWorktree = try {
+                    listWorktreesInBackground(project, repository)
+                        ?.firstOrNull { it.path == path }
+                } catch (_: ProcessCanceledException) {
+                    // User cancelled validation; treat as cancel.
+                    return@WorktreeListContent null
+                }
 
                 val choice = Messages.showDialog(
                     project,
@@ -518,6 +527,25 @@ internal fun isWorktreeAlreadyOpen(openProjectBasePaths: Sequence<String?>, work
 @VisibleForTesting
 internal fun restoreFromMinimizedPreservingMaximized(extendedState: Int): Int {
     return extendedState and Frame.ICONIFIED.inv()
+}
+
+private fun listWorktreesInBackground(project: Project, repository: GitRepository): List<WorktreeInfo>? {
+    val gitWorktreeService = GitWorktreeService.getInstance(project)
+
+    return try {
+        ProgressManager.getInstance().runProcessWithProgressSynchronously(
+            ThrowableComputable {
+                gitWorktreeService.listWorktrees(repository).getOrNull()
+            },
+            "Checking existing worktrees…",
+            true,
+            project
+        )
+    } catch (e: ProcessCanceledException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
 }
 
 private fun openOrFocusWorktree(

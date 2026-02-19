@@ -3,6 +3,7 @@ package com.purringlabs.gitworktree.gitworktreemanager.services
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.purringlabs.gitworktree.gitworktreemanager.exceptions.WorktreeOperationException
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
@@ -116,6 +117,9 @@ class GitWorktreeService(private val project: Project) {
                     )
                 )
             }
+        } catch (e: ProcessCanceledException) {
+            // IntelliJ cancellation must always propagate.
+            throw e
         } catch (e: Exception) {
             Result.failure(
                 WorktreeOperationException(
