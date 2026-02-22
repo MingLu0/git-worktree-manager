@@ -113,7 +113,11 @@ private fun WorktreeManagerContent(project: Project) {
 
     // ViewModel scope: must outlive the composition to avoid ForgottenCoroutineScopeException when
     // long-running Git operations complete after the UI leaves composition.
-    val viewModelScope = remember(project) { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    // Use a single-threaded dispatcher to serialize state updates (state = state.copy(...))
+    // while still allowing repository methods to hop to Dispatchers.IO internally.
+    val viewModelScope = remember(project) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+    }
 
     val viewModel = remember(project) {
         WorktreeViewModel(
