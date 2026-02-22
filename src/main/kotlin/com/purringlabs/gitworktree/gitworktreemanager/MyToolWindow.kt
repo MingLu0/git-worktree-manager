@@ -58,7 +58,10 @@ import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.annotations.VisibleForTesting
@@ -105,11 +108,21 @@ class MyToolWindowFactory : ToolWindowFactory {
  */
 @Composable
 private fun WorktreeManagerContent(project: Project) {
-    val coroutineScope = rememberCoroutineScope()
-    val viewModel = remember {
+    // UI scope: safe for UI interactions within the current composition.
+    val uiScope = rememberCoroutineScope()
+
+    // ViewModel scope: must outlive the composition to avoid ForgottenCoroutineScopeException when
+    // long-running Git operations complete after the UI leaves composition.
+    // Use a single-threaded dispatcher to serialize state updates (state = state.copy(...))
+    // while still allowing repository methods to hop to Dispatchers.IO internally.
+    val viewModelScope = remember(project) {
+        CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+    }
+
+    val viewModel = remember(project) {
         WorktreeViewModel(
             project = project,
-            coroutineScope = coroutineScope,
+            coroutineScope = viewModelScope,
             repository = WorktreeRepository(project),
             ignoredFilesService = IgnoredFilesService.getInstance(project),
             fileOpsService = FileOperationsService.getInstance(project)
@@ -117,7 +130,7 @@ private fun WorktreeManagerContent(project: Project) {
     }
 
     // Initialize data on first composition
-    LaunchedEffect(Unit) {
+    LaunchedEffect(project) {
         viewModel.refreshWorktrees()
     }
 
@@ -127,7 +140,11 @@ private fun WorktreeManagerContent(project: Project) {
             requestAutoRefresh = viewModel::requestAutoRefresh,
             cancelAutoRefresh = viewModel::cancelAutoRefresh
         )
-        onDispose { Disposer.dispose(disposable) }
+        onDispose {
+            // Stop background jobs when the tool window content is disposed.
+            viewModelScope.cancel()
+            Disposer.dispose(disposable)
+        }
     }
 
     WorktreeListContent(
@@ -197,7 +214,7 @@ private fun WorktreeManagerContent(project: Project) {
                 return@WorktreeListContent
             }
 
-            coroutineScope.launch {
+            uiScope.launch {
                 // Step 1: Scan for ignored files
                 viewModel.scanIgnoredFiles()
 

@@ -61,12 +61,39 @@ object UiErrorMapper {
             }
 
             is WorktreeOperationException -> {
+                val errorOut = throwable.gitErrorOutput ?: msg
+
+                // Special-case: broken worktree metadata (.git missing in the worktree directory)
+                // Git will refuse to remove it and suggests a validation failure.
+                val lower = errorOut.lowercase()
+                if (lower.contains("validation failed") && lower.contains("cannot remove working tree") && lower.contains(".git") && lower.contains("does not exist")) {
+                    val details = buildDetails(
+                        operation = operation,
+                        command = throwable.gitCommand,
+                        workingDirectory = null,
+                        exitCode = throwable.gitExitCode,
+                        errorOutput = errorOut
+                    )
+
+                    return UiError(
+                        title = "Git Worktree Manager — Worktree metadata is missing",
+                        summary = "This worktree’s metadata looks broken (its .git file/folder is missing), so Git refused to remove it.",
+                        actions = listOf(
+                            "In the repo root, run: git worktree prune",
+                            "If the folder still exists, delete the broken worktree folder manually, then prune again",
+                            "Then refresh the worktree list and retry deletion"
+                        ),
+                        details = details,
+                        copyText = buildCopyText(details)
+                    )
+                }
+
                 val details = buildDetails(
                     operation = operation,
                     command = throwable.gitCommand,
                     workingDirectory = null,
                     exitCode = throwable.gitExitCode,
-                    errorOutput = throwable.gitErrorOutput ?: msg
+                    errorOutput = errorOut
                 )
 
                 UiError(
