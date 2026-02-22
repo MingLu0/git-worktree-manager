@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.8"
+version = "1.1.9"
 
 repositories {
     mavenCentral()
@@ -43,14 +43,9 @@ intellijPlatform {
 
         changeNotes = """
             Fixes:
-            - Improve Create Worktree UX when the target worktree folder already exists (prompt early; default opens existing)
-            - Improve Create Worktree UX when branch name already exists (prompt early; require rename)
-            - Treat existing/registered worktree as success during Create Worktree (opens existing worktree instead of failing)
-            - Fix IDE assertion by avoiding Git/auth work during branch validation on the UI thread
-            - Remove the Open button from worktree rows (double-click to open)
-            - Fail fast when no Git repository is detected and provide guidance (Open Git / Refresh / How to fix)
-            - Track which no-repository CTA users choose (NO_REPOSITORY_CTA event)
-            - Add search/filter for the worktree list (search by branch/path/commit)
+            - Fix crash during long-running operations when the tool window leaves composition (ForgottenCoroutineScopeException)
+            - Improve delete-worktree errors when Git worktree metadata is broken (.git missing) with actionable guidance (git worktree prune)
+            - Avoid potential state update races during refresh/delete flows by serializing ViewModel state updates
         """.trimIndent()
     }
 
