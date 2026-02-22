@@ -1,0 +1,42 @@
+name: Auto-format change notes (release PRs)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+
+jobs:
+  auto-change-notes:
+    if: |
+      startsWith(github.head_ref, 'release/') &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate changeNotes into build.gradle.kts
+        run: node scripts/generate-change-notes.mjs --apply
+
+      - name: Commit changes (if any)
+        run: |
+          if git diff --quiet; then
+            echo "No changeNotes updates needed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build.gradle.kts
+          git commit -m "chore: auto-format change notes"
+          git push

@@ -21,9 +21,9 @@ Required for CI signing (`signPlugin`):
 ### 1) Bump version + change notes
 Edit `build.gradle.kts`:
 - Update `version = "x.y.z"`
-- Update `intellijPlatform { pluginConfiguration { changeNotes = ... } }`
+- (Optional) Put rough bullets in `changeNotes` if you want.
 
-Commit to `master`.
+✅ **Automation:** when you open a `release/vX.Y.Z` PR, GitHub Actions will auto-format `changeNotes` into a short, user-friendly "What's new" / "Fixes" section based on merged PR titles since the last tag. It commits the formatted changeNotes back to the release branch.
 
 ### 2) (Optional) Dry-run signing/build in GitHub Actions
 GitHub → Actions → **Release to JetBrains Marketplace** → Run workflow:
