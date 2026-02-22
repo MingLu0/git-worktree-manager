@@ -126,7 +126,7 @@ private fun WorktreeManagerContent(project: Project) {
     }
 
     // Initialize data on first composition
-    LaunchedEffect(Unit) {
+    LaunchedEffect(project) {
         viewModel.refreshWorktrees()
     }
 
