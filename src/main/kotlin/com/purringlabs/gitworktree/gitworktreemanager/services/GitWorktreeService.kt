@@ -229,7 +229,17 @@ class GitWorktreeService(private val project: Project) {
         // Resolve weirdness like /a/b/./c
         val canonical = FileUtil.toCanonicalPath(worktreePath)
         val gitPath = File(canonical, ".git")
-        return gitPath.isDirectory
+
+        // Normal (non-bare) repos:
+        // - main worktree: .git is a directory
+        // - linked worktree: .git is a file (contains "gitdir: ...")
+        if (gitPath.isDirectory) return true
+        if (gitPath.isFile) return false
+
+        // Bare repositories:
+        // The "primary" location has no .git directory because it *is* the git dir.
+        // Treat missing .git as main to avoid enabling delete on the primary path.
+        return !gitPath.exists()
     }
 
     companion object {

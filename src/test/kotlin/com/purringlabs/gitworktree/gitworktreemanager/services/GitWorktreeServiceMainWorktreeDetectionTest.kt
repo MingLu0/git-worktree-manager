@@ -29,4 +29,15 @@ class GitWorktreeServiceMainWorktreeDetectionTest : BasePlatformTestCase() {
             dir.deleteRecursively()
         }
     }
+
+    fun `test isMainWorktreePath returns true when dot-git is missing (bare repo primary path)`() {
+        val dir = Files.createTempDirectory("gwt-bare-").toFile()
+        try {
+            // no .git
+            val service = GitWorktreeService(project)
+            assertTrue(service.isMainWorktreePath(dir.absolutePath))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
