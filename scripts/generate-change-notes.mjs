@@ -208,6 +208,9 @@ function main() {
   const fixes = [];
 
   for (const n of prs) {
+    // Stop early once we've filled both sections to avoid excessive API calls.
+    if (whatsNew.length >= args.maxNew && fixes.length >= args.maxFixes) break;
+
     const title = fetchPrTitle(repo, n);
     const c = classify(title);
     if (c.skip) continue;
