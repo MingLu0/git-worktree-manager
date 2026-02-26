@@ -41,16 +41,26 @@ function latestTag() {
 }
 
 function prNumbersSinceTag(tag) {
-  // Use merge commits: "Merge pull request #123 from ..."
-  // This is robust with PR-only rules.
+  // Capture both merge commits and squash merges.
+  // - Merge commit subject: "Merge pull request #123 from ..."
+  // - Squash merge subject (GitHub default): "Some title (#123)"
   const range = tag ? `${tag}..HEAD` : 'HEAD';
-  const log = sh('git', ['log', '--merges', '--pretty=%s', range]);
+  const log = sh('git', ['log', '--pretty=%s', range]);
   const nums = [];
+
   for (const line of log.split('\n')) {
-    const m = line.match(/Merge pull request #(\d+)\b/);
-    if (m) nums.push(Number(m[1]));
+    const merge = line.match(/Merge pull request #(\d+)\b/);
+    if (merge) {
+      nums.push(Number(merge[1]));
+      continue;
+    }
+
+    const squash = line.match(/\(#(\d+)\)\s*$/);
+    if (squash) nums.push(Number(squash[1]));
   }
-  return Array.from(new Set(nums)).sort((a, b) => a - b);
+
+  // Newest first so we prefer recent changes in the limited bullets.
+  return Array.from(new Set(nums)).sort((a, b) => b - a);
 }
 
 function repoSlug() {
@@ -155,13 +165,31 @@ function indentForKotlin(text, spaces) {
 
 function parseArgs(argv) {
   const args = { sinceTag: null, apply: false, maxNew: 3, maxFixes: 4 };
-  for (let i = 2; i < argv.length; i++) {
+
+  let i = 2;
+
+  function requireValue(flag) {
+    const v = argv[i + 1];
+    if (v == null || v.startsWith('--')) {
+      throw new Error(`Missing value for ${flag}`);
+    }
+    i++;
+    return v;
+  }
+
+  for (; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--sinceTag') args.sinceTag = argv[++i];
+    if (a === '--sinceTag') args.sinceTag = requireValue('--sinceTag');
     else if (a === '--apply') args.apply = true;
-    else if (a === '--maxNew') args.maxNew = Number(argv[++i]);
-    else if (a === '--maxFixes') args.maxFixes = Number(argv[++i]);
-    else if (a === '--help' || a === '-h') {
+    else if (a === '--maxNew') {
+      const v = Number(requireValue('--maxNew'));
+      if (!Number.isFinite(v)) throw new Error('Invalid value for --maxNew');
+      args.maxNew = v;
+    } else if (a === '--maxFixes') {
+      const v = Number(requireValue('--maxFixes'));
+      if (!Number.isFinite(v)) throw new Error('Invalid value for --maxFixes');
+      args.maxFixes = v;
+    } else if (a === '--help' || a === '-h') {
       console.log('Usage: node scripts/generate-change-notes.mjs [--sinceTag vX.Y.Z] [--apply] [--maxNew N] [--maxFixes N]');
       process.exit(0);
     }
@@ -184,6 +212,7 @@ function main() {
     const c = classify(title);
     if (c.skip) continue;
     const bullet = toBullet(title);
+    if (!bullet) continue;
 
     if (c.section === 'fixes') {
       if (fixes.length < args.maxFixes) fixes.push(bullet);
