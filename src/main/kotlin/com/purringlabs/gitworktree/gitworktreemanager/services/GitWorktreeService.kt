@@ -12,6 +12,8 @@ import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
+import com.intellij.openapi.util.io.FileUtil
+import org.jetbrains.annotations.VisibleForTesting
 import java.io.File
 
 @Service(Service.Level.PROJECT)
@@ -106,7 +108,16 @@ class GitWorktreeService(private val project: Project) {
         return try {
             val result = git.runCommand(handler)
             if (result.success()) {
-                Result.success(WorktreeInfo.parseFromPorcelain(result.output))
+                val parsed = WorktreeInfo.parseFromPorcelain(result.output)
+
+                // Git's porcelain output doesn't explicitly mark the primary (main) working tree.
+                // A practical and reliable heuristic is: main worktree has a real .git directory;
+                // linked worktrees have a .git file that points at the shared gitdir.
+                val withMainFlag = parsed.map { wt ->
+                    wt.copy(isMain = isMainWorktreePath(wt.path))
+                }
+
+                Result.success(withMainFlag)
             } else {
                 Result.failure(
                     WorktreeOperationException(
@@ -211,6 +222,14 @@ class GitWorktreeService(private val project: Project) {
         val projectName = projectDir.name
         val parentDir = projectDir.parentFile
         return File(parentDir, "$projectName-$worktreeName").absolutePath
+    }
+
+    @VisibleForTesting
+    internal fun isMainWorktreePath(worktreePath: String): Boolean {
+        // Resolve weirdness like /a/b/./c
+        val canonical = FileUtil.toCanonicalPath(worktreePath)
+        val gitPath = File(canonical, ".git")
+        return gitPath.isDirectory
     }
 
     companion object {
