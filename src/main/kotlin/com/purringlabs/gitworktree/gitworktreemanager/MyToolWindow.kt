@@ -147,8 +147,11 @@ private fun WorktreeManagerContent(project: Project) {
         }
     }
 
+    val currentProjectBasePath = remember(project) { project.basePath }
+
     WorktreeListContent(
         state = viewModel.state,
+        currentProjectBasePath = currentProjectBasePath,
         onSearchQueryChange = viewModel::setSearchQuery,
         onRefresh = {
             val repository = findValidRepository(project)
@@ -546,6 +549,17 @@ internal fun restoreFromMinimizedPreservingMaximized(extendedState: Int): Int {
     return extendedState and Frame.ICONIFIED.inv()
 }
 
+@VisibleForTesting
+internal fun isCurrentWorktree(currentProjectBasePath: String?, worktreePath: String): Boolean {
+    val canonicalCurrent = currentProjectBasePath?.let { canonicalizePath(it) } ?: return false
+    return canonicalizePath(worktreePath) == canonicalCurrent
+}
+
+@VisibleForTesting
+internal fun isDeleteEnabled(isMain: Boolean, isDeleting: Boolean): Boolean {
+    return !isDeleting && !isMain
+}
+
 private fun listWorktreesInBackground(project: Project, repository: GitRepository): List<WorktreeInfo>? {
     val gitWorktreeService = GitWorktreeService.getInstance(project)
 
@@ -627,6 +641,7 @@ private fun openOrFocusWorktree(
 @Composable
 private fun WorktreeListContent(
     state: com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeState,
+    currentProjectBasePath: String?,
     onSearchQueryChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onOpenWorktree: (WorktreeInfo) -> Unit,
@@ -718,6 +733,9 @@ private fun WorktreeListContent(
             }
         }
 
+        // Note: current-worktree detection is implemented via isCurrentWorktree(...)
+        // and kept as a pure function to make it easy to unit-test.
+
         val searchBorder = if (isSystemInDarkTheme()) Color(0x33FFFFFF) else Color(0x22000000)
         val searchBg = if (isSystemInDarkTheme()) Color(0x14FFFFFF) else Color(0x0A000000)
 
@@ -788,8 +806,14 @@ private fun WorktreeListContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredWorktrees) { worktree ->
+                    val isCurrent = isCurrentWorktree(
+                        currentProjectBasePath = currentProjectBasePath,
+                        worktreePath = worktree.path
+                    )
+
                     WorktreeItem(
                         worktree = worktree,
+                        isCurrent = isCurrent,
                         isDeleting = state.deletingWorktreePath == worktree.path,
                         onOpen = { onOpenWorktree(worktree) },
                         onDelete = {
@@ -812,16 +836,27 @@ private fun WorktreeListContent(
 @Composable
 private fun WorktreeItem(
     worktree: WorktreeInfo,
+    isCurrent: Boolean,
     isDeleting: Boolean,
     onOpen: () -> Unit,
     onDelete: () -> Unit
 ) {
     var isHovered by remember { mutableStateOf(false) }
+
+    val currentBackground = when {
+        !isCurrent -> Color.Transparent
+        isSystemInDarkTheme() -> Color(0x162F80FF) // subtle blue tint
+        else -> Color(0x142F80FF)
+    }
+
     val hoverBackground = when {
         !isHovered -> Color.Transparent
         isSystemInDarkTheme() -> Color(0x22FFFFFF)
         else -> Color(0x14000000)
     }
+
+    // If it's both current + hovered, blend by just preferring hover.
+    val rowBackground = if (isHovered) hoverBackground else currentBackground
 
     Row(
         modifier = Modifier
@@ -843,7 +878,7 @@ private fun WorktreeItem(
                     onDoubleTap = { onOpen() }
                 )
             }
-            .background(hoverBackground)
+            .background(rowBackground)
             .padding(8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -859,8 +894,14 @@ private fun WorktreeItem(
                     text = worktree.branch ?: "detached HEAD",
                     fontWeight = FontWeight.Bold
                 )
-                if (worktree.isMain) {
-                    Text(text = "(main)", fontWeight = FontWeight.Light)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (isCurrent) {
+                        Text(text = "(current)", fontWeight = FontWeight.Light)
+                    }
+                    if (worktree.isMain) {
+                        Text(text = "(main)", fontWeight = FontWeight.Light)
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -868,6 +909,12 @@ private fun WorktreeItem(
                 text = worktree.path,
                 fontWeight = FontWeight.Light
             )
+            if (worktree.isMain) {
+                Text(
+                    text = "Main working tree (repo root)",
+                    fontWeight = FontWeight.Light
+                )
+            }
             Text(
                 text = "Commit: ${worktree.commit.take(8)}",
                 fontWeight = FontWeight.Light
@@ -889,10 +936,47 @@ private fun WorktreeItem(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Delete button (only show for non-main worktrees)
-            if (!worktree.isMain) {
-                OutlinedButton(onClick = onDelete, enabled = !isDeleting) {
+            // Delete button
+            // - Non-main: enabled (unless deleting)
+            // - Main: shown but disabled, with tooltip explaining why
+            val deleteEnabled = isDeleteEnabled(isMain = worktree.isMain, isDeleting = isDeleting)
+            var isDeleteHovered by remember { mutableStateOf(false) }
+
+            Box(
+                modifier = Modifier
+                    // Track hover on the container so we still get hover events when the button is disabled.
+                    .pointerMoveFilter(
+                        onEnter = {
+                            isDeleteHovered = true
+                            false
+                        },
+                        onExit = {
+                            isDeleteHovered = false
+                            false
+                        }
+                    )
+            ) {
+                OutlinedButton(onClick = { if (deleteEnabled) onDelete() }, enabled = deleteEnabled) {
                     Text("Delete")
+                }
+
+                if (worktree.isMain && isDeleteHovered) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(y = (-32).dp)
+                            .background(
+                                if (isSystemInDarkTheme()) Color(0xEE2B2B2B) else Color(0xEEFFFFFF),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .border(1.dp, if (isSystemInDarkTheme()) Color(0x55FFFFFF) else Color(0x22000000), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Main working tree can’t be removed.",
+                            fontWeight = FontWeight.Light
+                        )
+                    }
                 }
             }
         }
