@@ -42,11 +42,12 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Fixes:
-            - Fix crash during long-running operations when the tool window leaves composition (ForgottenCoroutineScopeException)
-            - Improve delete-worktree errors when Git worktree metadata is broken (.git missing) with actionable guidance (git worktree prune)
-            - Avoid potential state update races during refresh/delete flows by serializing ViewModel state updates
-        """.trimIndent()
+            <b>What's new</b>
+            <ul>
+              <li>Disable delete for main worktree + highlight current</li>
+              <li>Automate user-friendly What&#39;s New (changeNotes) for release PRs</li>
+            </ul>
+""".trimIndent()
     }
 
     signing {
