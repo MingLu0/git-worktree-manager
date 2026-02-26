@@ -139,12 +139,19 @@ function escapeHtml(s) {
     .replaceAll("'", '&#39;');
 }
 
+function escapeKotlinRawString(s) {
+  // Kotlin raw strings (""" ... """) still treat `$` as string template marker.
+  // Escape it to prevent compilation errors when PR titles contain `$`.
+  return s.replaceAll('$', '\\$');
+}
+
 function updateBuildGradle(changeNotesHtml) {
   const p = 'build.gradle.kts';
   const src = fs.readFileSync(p, 'utf8');
 
   const re = /changeNotes\s*=\s*"""[\s\S]*?"""\.trimIndent\(\)/m;
-  const replacement = `changeNotes = """\n${indentForKotlin(changeNotesHtml, 12)}\n""".trimIndent()`;
+  const safeHtml = escapeKotlinRawString(changeNotesHtml);
+  const replacement = `changeNotes = """\n${indentForKotlin(safeHtml, 12)}\n""".trimIndent()`;
 
   if (!re.test(src)) {
     throw new Error('Could not find changeNotes = """...""".trimIndent() in build.gradle.kts');
