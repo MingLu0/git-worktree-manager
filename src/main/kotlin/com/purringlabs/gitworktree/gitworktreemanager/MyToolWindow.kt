@@ -21,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.awt.SwingPanel
@@ -834,7 +835,8 @@ private fun WorktreeListContent(
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
-private fun WorktreeItem(
+@VisibleForTesting
+fun WorktreeItem(
     worktree: WorktreeInfo,
     isCurrent: Boolean,
     isDeleting: Boolean,
@@ -860,6 +862,7 @@ private fun WorktreeItem(
 
     Row(
         modifier = Modifier
+            .testTag("worktreeRow:${worktree.path}")
             .fillMaxWidth()
             .pointerMoveFilter(
                 onEnter = {
@@ -956,13 +959,18 @@ private fun WorktreeItem(
                         }
                     )
             ) {
-                OutlinedButton(onClick = { if (deleteEnabled) onDelete() }, enabled = deleteEnabled) {
+                OutlinedButton(
+                    onClick = { if (deleteEnabled) onDelete() },
+                    enabled = deleteEnabled,
+                    modifier = Modifier.testTag("deleteButton:${worktree.path}")
+                ) {
                     Text("Delete")
                 }
 
                 if (worktree.isMain && isDeleteHovered) {
                     Box(
                         modifier = Modifier
+                            .testTag("deleteTooltip:${worktree.path}")
                             .align(Alignment.TopEnd)
                             .offset(y = (-32).dp)
                             .background(

@@ -10,9 +10,30 @@ group = "com.purringlabs.gitworktree"
 version = "1.1.9"
 
 repositories {
+    // Needed for optional Compose UI testing dependencies (androidx artifacts)
+    google()
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
+    }
+}
+
+sourceSets {
+    create("uiTest") {
+        kotlin.srcDir("src/uiTest/kotlin")
+        resources.srcDir("src/uiTest/resources")
+        compileClasspath += sourceSets["main"].output + configurations["testCompileClasspath"]
+        runtimeClasspath += output + compileClasspath + configurations["testRuntimeClasspath"]
+    }
+}
+
+configurations {
+    // Wire up uiTest* configurations
+    named("uiTestImplementation") {
+        extendsFrom(configurations["testImplementation"])
+    }
+    named("uiTestRuntimeOnly") {
+        extendsFrom(configurations["testRuntimeOnly"])
     }
 }
 
@@ -33,6 +54,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     testImplementation(kotlin("test"))
+
+    // Optional Compose Desktop UI tests live in a separate sourceSet/task (uiTest) so they
+    // don't interfere with IntelliJ platform tests/classpath.
+    "uiTestImplementation"(kotlin("test"))
+    "uiTestImplementation"("org.jetbrains.compose.ui:ui-test-junit4:1.8.0")
 }
 
 intellijPlatform {
@@ -65,6 +91,29 @@ tasks {
     withType<JavaCompile> {
         sourceCompatibility = "21"
         targetCompatibility = "21"
+    }
+
+    // Optional: run with ./gradlew uiTest -DenableDesktopComposeUiTests=true
+    // These tests need a Java 21 runtime because the plugin is built for Java 21.
+    register<Test>("uiTest") {
+        description = "Runs optional Compose Desktop UI tests"
+        group = "verification"
+        testClassesDirs = sourceSets["uiTest"].output.classesDirs
+        classpath = sourceSets["uiTest"].runtimeClasspath
+        shouldRunAfter("test")
+
+        // Prefer the JetBrains Runtime (JBR) shipped with the IntelliJ distribution Gradle downloads.
+        // We locate it from the Gradle cache rather than requiring a local JDK 21 installation.
+        val jbrJava = fileTree(gradle.gradleUserHomeDir).matching {
+            include("caches/**/transforms/**/transformed/ideaIU-*/jbr/**/bin/java")
+        }.files.firstOrNull()
+
+        if (jbrJava != null) {
+            executable = jbrJava.absolutePath
+        } else {
+            // Keep the build green by skipping unless explicitly configured.
+            enabled = false
+        }
     }
 }
 
