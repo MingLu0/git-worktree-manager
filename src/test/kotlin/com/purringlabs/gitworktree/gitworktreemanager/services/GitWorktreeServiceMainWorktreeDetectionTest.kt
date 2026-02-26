@@ -40,4 +40,15 @@ class GitWorktreeServiceMainWorktreeDetectionTest : BasePlatformTestCase() {
             dir.deleteRecursively()
         }
     }
+
+    fun `test isMainWorktreePath returns false when worktree path does not exist`() {
+        val dir = Files.createTempDirectory("gwt-missing-").toFile()
+        try {
+            val missingPath = File(dir, "does-not-exist").absolutePath
+            val service = GitWorktreeService(project)
+            assertFalse(service.isMainWorktreePath(missingPath))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

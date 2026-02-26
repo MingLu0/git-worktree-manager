@@ -238,8 +238,10 @@ class GitWorktreeService(private val project: Project) {
 
         // Bare repositories:
         // The "primary" location has no .git directory because it *is* the git dir.
-        // Treat missing .git as main to avoid enabling delete on the primary path.
-        return !gitPath.exists()
+        // However, stale/prunable worktree entries can point at paths that no longer exist.
+        // Only treat missing .git as main if the worktree path itself exists.
+        val worktreeExists = File(canonical).exists()
+        return worktreeExists && !gitPath.exists()
     }
 
     companion object {
