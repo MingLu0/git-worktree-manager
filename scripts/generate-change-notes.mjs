@@ -140,7 +140,8 @@ function updateBuildGradle(changeNotesHtml) {
     throw new Error('Could not find changeNotes = """...""".trimIndent() in build.gradle.kts');
   }
 
-  const out = src.replace(re, replacement);
+  // Use a function replacer so `$&`, `$`` and `$'` in the replacement are not treated as special patterns.
+  const out = src.replace(re, () => replacement);
   fs.writeFileSync(p, out);
 }
 
