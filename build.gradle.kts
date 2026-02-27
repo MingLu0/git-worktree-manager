@@ -44,8 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Disable delete for main worktree + highlight current</li>
-              <li>Automate user-friendly What&#39;s New (changeNotes) for release PRs</li>
+              <li>UI: pin current+main worktrees; block deleting current</li>
             </ul>
 """.trimIndent()
     }
