@@ -33,16 +33,21 @@ class MyToolWindowWorktreeItemLogicTest {
 
     @Test
     fun `isDeleteEnabled returns false for main worktree`() {
-        assertFalse(isDeleteEnabled(isMain = true, isDeleting = false))
+        assertFalse(isDeleteEnabled(isMain = true, isCurrent = false, isDeleting = false))
+    }
+
+    @Test
+    fun `isDeleteEnabled returns false for current worktree`() {
+        assertFalse(isDeleteEnabled(isMain = false, isCurrent = true, isDeleting = false))
     }
 
     @Test
     fun `isDeleteEnabled returns false while deleting`() {
-        assertFalse(isDeleteEnabled(isMain = false, isDeleting = true))
+        assertFalse(isDeleteEnabled(isMain = false, isCurrent = false, isDeleting = true))
     }
 
     @Test
-    fun `isDeleteEnabled returns true for non-main and not deleting`() {
-        assertTrue(isDeleteEnabled(isMain = false, isDeleting = false))
+    fun `isDeleteEnabled returns true for non-main, non-current, and not deleting`() {
+        assertTrue(isDeleteEnabled(isMain = false, isCurrent = false, isDeleting = false))
     }
 }

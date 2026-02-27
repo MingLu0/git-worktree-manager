@@ -556,8 +556,9 @@ internal fun isCurrentWorktree(currentProjectBasePath: String?, worktreePath: St
 }
 
 @VisibleForTesting
-internal fun isDeleteEnabled(isMain: Boolean, isDeleting: Boolean): Boolean {
-    return !isDeleting && !isMain
+internal fun isDeleteEnabled(isMain: Boolean, isCurrent: Boolean, isDeleting: Boolean): Boolean {
+    // Never allow deleting the main worktree, or the currently-open worktree.
+    return !isDeleting && !isMain && !isCurrent
 }
 
 private fun listWorktreesInBackground(project: Project, repository: GitRepository): List<WorktreeInfo>? {
@@ -780,6 +781,17 @@ private fun WorktreeListContent(
         }
 
         // Worktree list
+        // Sort so the currently-open worktree is always at the top, and the main worktree is pinned just under it.
+        val sortedWorktrees = remember(filteredWorktrees, currentProjectBasePath) {
+            filteredWorktrees.sortedWith(
+                compareByDescending<WorktreeInfo> { wt ->
+                    isCurrentWorktree(currentProjectBasePath = currentProjectBasePath, worktreePath = wt.path)
+                }.thenByDescending { wt -> wt.isMain }
+                    .thenBy { wt -> wt.branch ?: "" }
+                    .thenBy { wt -> wt.path }
+            )
+        }
+
         if (state.isLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -805,7 +817,7 @@ private fun WorktreeListContent(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(filteredWorktrees) { worktree ->
+                items(sortedWorktrees) { worktree ->
                     val isCurrent = isCurrentWorktree(
                         currentProjectBasePath = currentProjectBasePath,
                         worktreePath = worktree.path
@@ -939,7 +951,7 @@ private fun WorktreeItem(
             // Delete button
             // - Non-main: enabled (unless deleting)
             // - Main: shown but disabled, with tooltip explaining why
-            val deleteEnabled = isDeleteEnabled(isMain = worktree.isMain, isDeleting = isDeleting)
+            val deleteEnabled = isDeleteEnabled(isMain = worktree.isMain, isCurrent = isCurrent, isDeleting = isDeleting)
             var isDeleteHovered by remember { mutableStateOf(false) }
 
             Box(
@@ -960,22 +972,30 @@ private fun WorktreeItem(
                     Text("Delete")
                 }
 
-                if (worktree.isMain && isDeleteHovered) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(y = (-32).dp)
-                            .background(
-                                if (isSystemInDarkTheme()) Color(0xEE2B2B2B) else Color(0xEEFFFFFF),
-                                RoundedCornerShape(6.dp)
+                if (!deleteEnabled && isDeleteHovered) {
+                    val tooltipText = when {
+                        worktree.isMain -> "Main working tree can’t be removed."
+                        isCurrent -> "This worktree is currently open. Close it (or delete from another window) to remove it."
+                        else -> null
+                    }
+
+                    if (tooltipText != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(y = (-40).dp)
+                                .background(
+                                    if (isSystemInDarkTheme()) Color(0xEE2B2B2B) else Color(0xEEFFFFFF),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .border(1.dp, if (isSystemInDarkTheme()) Color(0x55FFFFFF) else Color(0x22000000), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = tooltipText,
+                                fontWeight = FontWeight.Light
                             )
-                            .border(1.dp, if (isSystemInDarkTheme()) Color(0x55FFFFFF) else Color(0x22000000), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Main working tree can’t be removed.",
-                            fontWeight = FontWeight.Light
-                        )
+                        }
                     }
                 }
             }
