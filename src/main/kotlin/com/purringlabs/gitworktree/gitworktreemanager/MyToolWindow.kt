@@ -561,6 +561,23 @@ internal fun isDeleteEnabled(isMain: Boolean, isCurrent: Boolean, isDeleting: Bo
     return !isDeleting && !isMain && !isCurrent
 }
 
+@VisibleForTesting
+internal fun sortWorktreesForDisplay(
+    worktrees: List<WorktreeInfo>,
+    currentProjectBasePath: String?
+): List<WorktreeInfo> {
+    return worktrees.sortedWith(
+        compareByDescending<WorktreeInfo> { wt ->
+            isCurrentWorktree(currentProjectBasePath = currentProjectBasePath, worktreePath = wt.path)
+        }
+            // Pin main directly under current.
+            // Note: in practice, current+main should never both be true at once, but this makes ordering stable.
+            .thenByDescending { wt -> wt.isMain }
+            .thenBy { wt -> wt.branch ?: "" }
+            .thenBy { wt -> wt.path }
+    )
+}
+
 private fun listWorktreesInBackground(project: Project, repository: GitRepository): List<WorktreeInfo>? {
     val gitWorktreeService = GitWorktreeService.getInstance(project)
 
@@ -783,12 +800,9 @@ private fun WorktreeListContent(
         // Worktree list
         // Sort so the currently-open worktree is always at the top, and the main worktree is pinned just under it.
         val sortedWorktrees = remember(filteredWorktrees, currentProjectBasePath) {
-            filteredWorktrees.sortedWith(
-                compareByDescending<WorktreeInfo> { wt ->
-                    isCurrentWorktree(currentProjectBasePath = currentProjectBasePath, worktreePath = wt.path)
-                }.thenByDescending { wt -> wt.isMain }
-                    .thenBy { wt -> wt.branch ?: "" }
-                    .thenBy { wt -> wt.path }
+            sortWorktreesForDisplay(
+                worktrees = filteredWorktrees,
+                currentProjectBasePath = currentProjectBasePath
             )
         }
 
