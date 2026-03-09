@@ -109,7 +109,7 @@ class WorktreeViewModel(
      */
     fun deleteWorktree(
         worktreePath: String,
-        onSuccess: () -> Unit,
+        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult) -> Unit,
         onError: (Throwable) -> Unit
     ) {
         coroutineScope.launch {
@@ -117,9 +117,9 @@ class WorktreeViewModel(
             try {
                 val branchName = state.worktrees.firstOrNull { it.path == worktreePath }?.branch
                 repository.deleteWorktree(worktreePath, branchName)
-                    .onSuccess {
+                    .onSuccess { result ->
                         refreshWorktrees()
-                        onSuccess()
+                        onSuccess(result)
                     }
                     .onFailure { error ->
                         onError(error)

@@ -347,13 +347,24 @@ private fun WorktreeManagerContent(project: Project) {
         onDeleteWorktree = { worktree ->
             viewModel.deleteWorktree(
                 worktreePath = worktree.path,
-                onSuccess = {
+                onSuccess = { result ->
                     ApplicationManager.getApplication().invokeLater {
-                        Messages.showInfoMessage(
-                            project,
-                            "Worktree deleted successfully!",
-                            "Success"
-                        )
+                        if (result.branchDeleted) {
+                            Messages.showInfoMessage(
+                                project,
+                                "Worktree deleted successfully!",
+                                "Success"
+                            )
+                        } else {
+                            val reason = result.branchDeleteError?.gitErrorOutput
+                                ?: result.branchDeleteError?.errorMessage
+                                ?: "Unknown reason"
+                            Messages.showWarningDialog(
+                                project,
+                                "Worktree removed, but branch cleanup failed.\n\nReason: $reason",
+                                "Partial Success"
+                            )
+                        }
                     }
                 },
                 onError = { error ->
