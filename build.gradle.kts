@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.12"
+version = "1.1.13"
 
 repositories {
     mavenCentral()
@@ -42,9 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>What's new</b>
+            <b>Fixes</b>
             <ul>
-              <li>UI: pin current+main worktrees; block deleting current</li>
+              <li>Fix silent branch cleanup failures when deleting worktrees</li>
             </ul>
 """.trimIndent()
     }
