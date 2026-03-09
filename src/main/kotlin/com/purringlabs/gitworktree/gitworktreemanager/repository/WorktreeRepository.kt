@@ -5,6 +5,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.exceptions.NoRepositoryExc
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
+import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.ListWorktreesEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
@@ -107,7 +108,7 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
      * @param worktreePath Path to the worktree to delete
      * @return Result indicating success or failure
      */
-    override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<DeleteWorktreeResult> = withContext(Dispatchers.IO) {
         val operationId = UUID.randomUUID().toString()
         val startTime = System.currentTimeMillis()
 
@@ -118,20 +119,24 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
             service.deleteWorktree(repository, worktreePath, branchName)
         }
 
+        val deleteResult = result.getOrNull()
+        val structuredError = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
+            ?: deleteResult?.branchDeleteError
+
         telemetryService.recordOperation(
             DeleteWorktreeEvent(
                 operationId = operationId,
                 startTime = startTime,
                 durationMs = System.currentTimeMillis() - startTime,
-                success = result.isSuccess,
+                success = result.isSuccess && (deleteResult?.branchDeleted != false),
                 context = telemetryService.getContext(),
                 worktreeName = worktreePath.substringAfterLast(File.separatorChar),
-                branchDeleted = result.getOrNull()?.branchDeleted ?: false,
-                error = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
+                branchDeleted = deleteResult?.branchDeleted ?: false,
+                error = structuredError
             )
         )
 
-        result.map { Unit }
+        result
     }
 }
 

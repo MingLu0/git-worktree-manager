@@ -7,6 +7,8 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.purringlabs.gitworktree.gitworktreemanager.exceptions.WorktreeOperationException
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
+import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorType
+import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
@@ -171,21 +173,36 @@ class GitWorktreeService(private val project: Project) {
                 )
             }
 
-            var branchDeleted = false
+            var branchDeleted = branchName.isNullOrBlank()
+            var branchDeleteError: StructuredError? = null
             if (!branchName.isNullOrBlank()) {
                 val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
                 deleteBranchHandler.addParameters("-D", branchName)
                 val branchResult = git.runCommand(deleteBranchHandler)
                 branchDeleted = branchResult.success()
                 if (!branchDeleted) {
+                    val gitError = branchResult.errorOutputAsJoinedString
                     logger.warn(
-                        "Worktree '$worktreePath' removed, but failed to delete branch '$branchName': " +
-                            branchResult.errorOutputAsJoinedString
+                        "Worktree '$worktreePath' removed, but failed to delete branch '$branchName': $gitError"
+                    )
+                    branchDeleteError = StructuredError(
+                        errorType = ErrorType.BRANCH_DELETE_FAILED.name,
+                        errorMessage = "Failed to delete branch '$branchName' after removing worktree",
+                        gitCommand = deleteBranchHandler.printableCommandLine(),
+                        gitExitCode = branchResult.exitCode,
+                        gitErrorOutput = gitError,
+                        stackTrace = null
                     )
                 }
             }
 
-            Result.success(DeleteWorktreeResult(worktreeRemoved = true, branchDeleted = branchDeleted))
+            Result.success(
+                DeleteWorktreeResult(
+                    worktreeRemoved = true,
+                    branchDeleted = branchDeleted,
+                    branchDeleteError = branchDeleteError
+                )
+            )
         } catch (e: Exception) {
             Result.failure(
                 WorktreeOperationException(

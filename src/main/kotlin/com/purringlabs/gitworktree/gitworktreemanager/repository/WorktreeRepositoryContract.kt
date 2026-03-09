@@ -1,6 +1,7 @@
 package com.purringlabs.gitworktree.gitworktreemanager.repository
 
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult
+import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 
 interface WorktreeRepositoryContract {
@@ -12,5 +13,5 @@ interface WorktreeRepositoryContract {
         createNewBranch: Boolean = true
     ): Result<CreateWorktreeResult>
 
-    suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit>
+    suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<DeleteWorktreeResult>
 }

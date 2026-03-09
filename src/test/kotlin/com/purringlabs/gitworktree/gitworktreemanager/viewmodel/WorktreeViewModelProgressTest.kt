@@ -2,6 +2,7 @@ package com.purringlabs.gitworktree.gitworktreemanager.viewmodel
 
 import com.intellij.openapi.project.Project
 import com.purringlabs.gitworktree.gitworktreemanager.models.CopyResult
+import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
@@ -67,7 +68,7 @@ class WorktreeViewModelProgressTest {
         val repository = FakeWorktreeRepository(
             deleteHandler = {
                 gate.await()
-                Result.success(Unit)
+                Result.success(DeleteWorktreeResult(worktreeRemoved = true, branchDeleted = true))
             }
         )
         val viewModel = WorktreeViewModel(
@@ -80,7 +81,7 @@ class WorktreeViewModelProgressTest {
 
         viewModel.deleteWorktree(
             worktreePath = "/tmp/worktree",
-            onSuccess = {},
+            onSuccess = { _ -> },
             onError = {}
         )
 
@@ -166,7 +167,9 @@ class WorktreeViewModelProgressTest {
         private val createHandler: suspend () -> Result<com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult> = {
             Result.success(com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult(path = "/tmp/worktree", created = true))
         },
-        private val deleteHandler: suspend () -> Result<Unit> = { Result.success(Unit) }
+        private val deleteHandler: suspend () -> Result<DeleteWorktreeResult> = {
+            Result.success(DeleteWorktreeResult(worktreeRemoved = true, branchDeleted = true))
+        }
     ) : WorktreeRepositoryContract {
         override suspend fun fetchWorktrees(): Result<List<WorktreeInfo>> = fetchHandler()
 
@@ -176,7 +179,7 @@ class WorktreeViewModelProgressTest {
             createNewBranch: Boolean
         ): Result<com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult> = createHandler()
 
-        override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<Unit> = deleteHandler()
+        override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<DeleteWorktreeResult> = deleteHandler()
     }
 
     private class FakeIgnoredFilesScanner(
