@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.13"
+version = "1.1.14"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,8 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>Fix silent branch cleanup failures when deleting worktrees</li>
+              <li>Auto-sanitize branch names entered in the Create Worktree flow (spaces become hyphens)</li>
+              <li>Improve branch-name validation to re-prompt when sanitized input is invalid</li>
             </ul>
 """.trimIndent()
     }
