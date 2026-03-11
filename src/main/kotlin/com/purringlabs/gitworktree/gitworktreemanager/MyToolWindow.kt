@@ -464,13 +464,28 @@ private fun WorktreeManagerContent(project: Project) {
             // IMPORTANT: do NOT run Git commands on the EDT.
             // Checking local branch existence should be done via repository state (not `git branch`),
             // otherwise Git may trigger auth helpers that assert when invoked from the UI thread.
-            var branchName = initialBranch
+            var branchName = sanitizeBranchName(initialBranch)
 
             fun branchAlreadyExists(name: String): Boolean {
                 return repository.branches.localBranches.any { it.name == name }
             }
 
             while (true) {
+                if (branchName.isBlank()) {
+                    val newBranch = Messages.showInputDialog(
+                        project,
+                        "Branch name is empty after sanitization. Please enter a valid name.",
+                        "Invalid Branch Name",
+                        Messages.getWarningIcon(),
+                        null,
+                        null
+                    )
+
+                    if (newBranch.isNullOrBlank()) return@WorktreeListContent null
+                    branchName = sanitizeBranchName(newBranch)
+                    continue
+                }
+
                 if (!branchAlreadyExists(branchName)) {
                     return@WorktreeListContent branchName
                 }
@@ -496,7 +511,7 @@ private fun WorktreeManagerContent(project: Project) {
                         )
 
                         if (newBranch.isNullOrBlank()) return@WorktreeListContent null
-                        branchName = newBranch
+                        branchName = sanitizeBranchName(newBranch)
                     }
 
                     else -> return@WorktreeListContent null
@@ -546,6 +561,18 @@ internal fun registerGitRepoAutoRefresh(
 
 @VisibleForTesting
 internal fun canonicalizePath(path: String): String = FileUtil.toCanonicalPath(path)
+
+@VisibleForTesting
+internal fun sanitizeBranchName(input: String): String {
+    return input
+        .trim()
+        .lowercase()
+        .replace(Regex("\\s+"), "-")
+        .replace(Regex("[^a-z0-9._/-]"), "-")
+        .replace(Regex("/+"), "/")
+        .replace(Regex("-+"), "-")
+        .replace(Regex("(^[-./]+|[-./]+$)"), "")
+}
 
 @VisibleForTesting
 internal fun isWorktreeAlreadyOpen(openProjectBasePaths: Sequence<String?>, worktreePath: String): Boolean {

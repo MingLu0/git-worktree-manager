@@ -1,6 +1,7 @@
 package com.purringlabs.gitworktree.gitworktreemanager
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -93,5 +94,25 @@ class MyToolWindowWorktreeItemLogicTest {
         )
 
         assertTrue(sorted.first().isMain)
+    }
+
+    @Test
+    fun `sanitizeBranchName converts whitespace to hyphen and lowercases`() {
+        assertEquals("feature-login-fix", sanitizeBranchName("  Feature   Login Fix  "))
+    }
+
+    @Test
+    fun `sanitizeBranchName replaces invalid characters and trims separators`() {
+        assertEquals("bugfix-login-flow", sanitizeBranchName("...bugfix@login#flow///"))
+    }
+
+    @Test
+    fun `sanitizeBranchName preserves slash structure while normalizing`() {
+        assertEquals("feature/auth-login", sanitizeBranchName("feature//auth login"))
+    }
+
+    @Test
+    fun `sanitizeBranchName can return empty when input has no valid characters`() {
+        assertEquals("", sanitizeBranchName("   @@@   "))
     }
 }
