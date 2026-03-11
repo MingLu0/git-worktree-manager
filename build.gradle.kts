@@ -42,10 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>Fixes</b>
+            <b>What's new</b>
             <ul>
-              <li>Auto-sanitize branch names entered in the Create Worktree flow (spaces become hyphens)</li>
-              <li>Improve branch-name validation to re-prompt when sanitized input is invalid</li>
+              <li>sanitize branch names entered in create-worktree flow</li>
             </ul>
 """.trimIndent()
     }
