@@ -377,7 +377,7 @@ private fun WorktreeManagerContent(project: Project) {
         onRequestWorktreeName = {
             Messages.showInputDialog(
                 project,
-                "Enter worktree name:",
+                "Enter worktree folder name:",
                 "Create Worktree",
                 null
             )
@@ -440,7 +440,7 @@ private fun WorktreeManagerContent(project: Project) {
                     1 -> {
                         val newName = Messages.showInputDialog(
                             project,
-                            "Enter a different worktree name:",
+                            "Enter a different worktree folder name:",
                             "Choose Another Name",
                             Messages.getQuestionIcon(),
                             "${name}-2",
