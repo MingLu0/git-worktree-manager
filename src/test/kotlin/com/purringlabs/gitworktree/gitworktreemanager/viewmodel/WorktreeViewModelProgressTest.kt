@@ -78,6 +78,15 @@ class WorktreeViewModelProgressTest {
             ignoredFilesService = FakeIgnoredFilesScanner(),
             fileOpsService = FakeFileOperations
         )
+        viewModel.state = viewModel.state.copy(
+            worktrees = listOf(
+                WorktreeInfo(
+                    path = "/tmp/worktree",
+                    commit = "deadbeef",
+                    branch = "feature/test"
+                )
+            )
+        )
 
         viewModel.deleteWorktree(
             worktreePath = "/tmp/worktree",

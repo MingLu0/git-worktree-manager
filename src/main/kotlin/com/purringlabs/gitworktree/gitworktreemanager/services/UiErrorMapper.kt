@@ -44,6 +44,36 @@ object UiErrorMapper {
             )
         }
 
+        if (isLockedWorktreeDelete(msg)) {
+            val details = buildDetails(operation = operation, errorOutput = msg)
+            return UiError(
+                title = "Git Worktree Manager — Worktree is locked",
+                summary = "This worktree is locked, so the plugin won’t delete it until it is unlocked.",
+                actions = listOf(
+                    "In the repo root, run: git worktree unlock <worktree-path>",
+                    "If the lock is intentional, keep it and do not delete this worktree",
+                    "After unlocking, refresh the list and retry deletion"
+                ),
+                details = details,
+                copyText = buildCopyText(details)
+            )
+        }
+
+        if (isPrunableWorktreeDelete(msg)) {
+            val details = buildDetails(operation = operation, errorOutput = msg)
+            return UiError(
+                title = "Git Worktree Manager — Worktree metadata is stale",
+                summary = "This worktree looks stale/broken, so it should be pruned before deletion.",
+                actions = listOf(
+                    "In the repo root, run: git worktree prune",
+                    "If the folder still exists afterward, delete the leftover worktree folder manually",
+                    "Then refresh the worktree list and retry branch cleanup if needed"
+                ),
+                details = details,
+                copyText = buildCopyText(details)
+            )
+        }
+
         return when (throwable) {
             is NoRepositoryException -> {
                 val details = buildDetails(operation = operation, errorOutput = msg)
@@ -165,6 +195,16 @@ object UiErrorMapper {
     private fun buildCopyText(details: String): String {
         // Provide a stable, pasteable block.
         return details.trim()
+    }
+
+    private fun isLockedWorktreeDelete(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("cannot delete locked worktree")
+    }
+
+    private fun isPrunableWorktreeDelete(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("stale/prunable") || (m.contains("git worktree prune") && m.contains("prunable"))
     }
 
     private fun sanitizePaths(input: String): String {
