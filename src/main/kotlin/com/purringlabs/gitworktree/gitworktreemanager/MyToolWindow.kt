@@ -366,9 +366,23 @@ private fun WorktreeManagerContent(project: Project) {
                 return@WorktreeListContent
             }
 
+            val service = GitWorktreeService.getInstance(project)
+            val selectedRemote = RemoteBranchSelectionDialog(project, remoteBranches).let { dialog ->
+                if (dialog.showAndGet()) dialog.selectedBranch else null
+            } ?: return@WorktreeListContent
+
+            val derivedLocal = service.deriveLocalBranchName(selectedRemote)
             val gitWorktreeService = GitWorktreeService.getInstance(project)
-            var candidateName = Messages.showInputDialog(project, "Enter worktree name:", "Create from Remote Branch", null)
-                ?: return@WorktreeListContent
+            var candidateName = sanitizeBranchName(derivedLocal).replace('/', '-')
+            if (candidateName.isBlank()) candidateName = "worktree"
+            candidateName = Messages.showInputDialog(
+                project,
+                "Enter worktree name:",
+                "Create from Remote Branch",
+                Messages.getQuestionIcon(),
+                candidateName,
+                null
+            ) ?: return@WorktreeListContent
             while (true) {
                 val path = gitWorktreeService.getWorktreePath(repository, candidateName)
                 val existingDir = File(path)
@@ -393,13 +407,6 @@ private fun WorktreeManagerContent(project: Project) {
                 ) ?: return@WorktreeListContent
             }
             val worktreeName = candidateName
-
-            val selectedRemote = RemoteBranchSelectionDialog(project, remoteBranches).let { dialog ->
-                if (dialog.showAndGet()) dialog.selectedBranch else null
-            } ?: return@WorktreeListContent
-
-            val service = GitWorktreeService.getInstance(project)
-            val derivedLocal = service.deriveLocalBranchName(selectedRemote)
             val finalBranch = if (repository.branches.localBranches.any { it.name == derivedLocal }) {
                 when (
                     Messages.showDialog(
