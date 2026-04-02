@@ -27,7 +27,7 @@ class WorktreeViewModel(
 ) {
 
     var state by mutableStateOf(WorktreeState())
-        private set
+        internal set
     private val autoRefreshDebouncer = WorktreeRefreshDebouncer(coroutineScope) { refreshWorktrees() }
 
     fun setSearchQuery(query: String) {
@@ -115,7 +115,32 @@ class WorktreeViewModel(
         coroutineScope.launch {
             state = state.copy(deletingWorktreePath = worktreePath, error = null)
             try {
-                val branchName = state.worktrees.firstOrNull { it.path == worktreePath }?.branch
+                val worktree = state.worktrees.firstOrNull { it.path == worktreePath }
+                    ?: return@launch onError(IllegalStateException("Worktree not found in current state: $worktreePath"))
+
+                if (worktree.isLocked) {
+                    return@launch onError(
+                        IllegalStateException(
+                            buildString {
+                                append("Cannot delete locked worktree")
+                                worktree.lockReason?.takeIf { it.isNotBlank() }?.let { append(": ").append(it) }
+                            }
+                        )
+                    )
+                }
+
+                if (worktree.isPrunable) {
+                    return@launch onError(
+                        IllegalStateException(
+                            buildString {
+                                append("Worktree metadata is stale/prunable. Run 'git worktree prune' first")
+                                worktree.prunableReason?.takeIf { it.isNotBlank() }?.let { append(": ").append(it) }
+                            }
+                        )
+                    )
+                }
+
+                val branchName = worktree.branch
                 repository.deleteWorktree(worktreePath, branchName)
                     .onSuccess { result ->
                         refreshWorktrees()

@@ -173,15 +173,36 @@ class GitWorktreeService(private val project: Project) {
                 )
             }
 
+            val worktreeDirStillExists = File(worktreePath).exists()
+            if (worktreeDirStillExists) {
+                return Result.failure(
+                    WorktreeOperationException(
+                        message = "Git reported success removing worktree, but folder still exists: '$worktreePath'",
+                        gitCommand = worktreeHandler.printableCommandLine(),
+                        gitExitCode = worktreeResult.exitCode,
+                        gitErrorOutput = buildString {
+                            val stderr = worktreeResult.errorOutputAsJoinedString
+                            if (stderr.isNotBlank()) append(stderr).append("\n\n")
+                            append("The worktree directory still exists on disk after git worktree remove --force completed.")
+                        }
+                    )
+                )
+            }
+
             var branchDeleted = branchName.isNullOrBlank()
             var branchDeleteError: StructuredError? = null
             if (!branchName.isNullOrBlank()) {
                 val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
                 deleteBranchHandler.addParameters("-D", branchName)
                 val branchResult = git.runCommand(deleteBranchHandler)
-                branchDeleted = branchResult.success()
+                val gitError = branchResult.errorOutputAsJoinedString
+                val branchMissing = !branchResult.success() && gitError.contains("not found", ignoreCase = true)
+
+                // Deleting an already-missing branch is effectively a no-op.
+                // This can happen when branch metadata is stale or the branch was removed elsewhere,
+                // and it should not make the overall delete action look failed to the user.
+                branchDeleted = branchResult.success() || branchMissing
                 if (!branchDeleted) {
-                    val gitError = branchResult.errorOutputAsJoinedString
                     logger.warn(
                         "Worktree '$worktreePath' removed, but failed to delete branch '$branchName': $gitError"
                     )
