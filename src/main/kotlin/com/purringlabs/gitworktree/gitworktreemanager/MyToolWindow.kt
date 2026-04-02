@@ -54,6 +54,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.services.UiErrorMapper
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.CopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.ErrorDetailsDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.IgnoredFilesSelectionDialog
+import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.RemoteBranchSelectionDialog
 import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
@@ -344,6 +345,106 @@ private fun WorktreeManagerContent(project: Project) {
                 }
             }
         },
+        onCreateFromRemoteBranch = {
+            val repository = findValidRepository(project)
+            if (repository == null) {
+                NoRepositoryUiHelper.showNoRepositoryDialog(
+                    project = project,
+                    attemptedOperation = "CREATE_WORKTREE",
+                    telemetry = TelemetryServiceImpl.getInstance()
+                )
+                return@WorktreeListContent
+            }
+
+            val remoteBranches = repository.branches.remoteBranches
+                .map { it.nameForRemoteOperations }
+                .filterNot { it.endsWith("/HEAD") }
+                .sorted()
+
+            if (remoteBranches.isEmpty()) {
+                Messages.showInfoMessage(project, "No remote branches found.", "Create from Remote Branch")
+                return@WorktreeListContent
+            }
+
+            val gitWorktreeService = GitWorktreeService.getInstance(project)
+            var candidateName = Messages.showInputDialog(project, "Enter worktree name:", "Create from Remote Branch", null)
+                ?: return@WorktreeListContent
+            while (true) {
+                val path = gitWorktreeService.getWorktreePath(repository, candidateName)
+                val existingDir = File(path)
+                if (!existingDir.exists()) break
+
+                val choice = Messages.showDialog(
+                    project,
+                    "The worktree folder already exists:\n$path\n\nWhat would you like to do?",
+                    "Worktree Folder Already Exists",
+                    arrayOf("Use another name…", "Cancel"),
+                    0,
+                    Messages.getWarningIcon()
+                )
+                if (choice != 0) return@WorktreeListContent
+                candidateName = Messages.showInputDialog(
+                    project,
+                    "Enter a different worktree name:",
+                    "Choose Another Name",
+                    Messages.getQuestionIcon(),
+                    "${candidateName}-2",
+                    null
+                ) ?: return@WorktreeListContent
+            }
+            val worktreeName = candidateName
+
+            val selectedRemote = RemoteBranchSelectionDialog(project, remoteBranches).let { dialog ->
+                if (dialog.showAndGet()) dialog.selectedBranch else null
+            } ?: return@WorktreeListContent
+
+            val service = GitWorktreeService.getInstance(project)
+            val derivedLocal = service.deriveLocalBranchName(selectedRemote)
+            val finalBranch = if (repository.branches.localBranches.any { it.name == derivedLocal }) {
+                when (
+                    Messages.showDialog(
+                        project,
+                        "Remote branch '$selectedRemote' maps to local branch '$derivedLocal', which already exists. What would you like to do?",
+                        "Remote Branch Already Has Local Checkout",
+                        arrayOf("Use existing local branch", "Use another local name…", "Cancel"),
+                        0,
+                        Messages.getWarningIcon()
+                    )
+                ) {
+                    0 -> derivedLocal
+                    1 -> {
+                        val newLocal = Messages.showInputDialog(
+                            project,
+                            "Enter a local branch name for tracking '$selectedRemote':",
+                            "Choose Local Branch Name",
+                            Messages.getQuestionIcon(),
+                            "${derivedLocal}-2",
+                            null
+                        ) ?: return@WorktreeListContent
+                        sanitizeBranchName(newLocal)
+                    }
+                    else -> return@WorktreeListContent
+                }
+            } else {
+                selectedRemote
+            }
+
+            viewModel.createWorktree(
+                name = worktreeName,
+                branchName = finalBranch,
+                onSuccess = { createResult ->
+                    ApplicationManager.getApplication().invokeLater {
+                        ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
+                        Messages.showInfoMessage(project, "Worktree created and opened in new window!", "Success")
+                    }
+                },
+                onError = { error ->
+                    ApplicationManager.getApplication().invokeLater {
+                        showOperationError(project, error, operation = "CREATE_WORKTREE")
+                    }
+                }
+            )
+        },
         onDeleteWorktree = { worktree ->
             viewModel.deleteWorktree(
                 worktreePath = worktree.path,
@@ -461,16 +562,31 @@ private fun WorktreeManagerContent(project: Project) {
             val repository = findValidRepository(project)
                 ?: return@WorktreeListContent initialBranch
 
-            // IMPORTANT: do NOT run Git commands on the EDT.
-            // Checking local branch existence should be done via repository state (not `git branch`),
-            // otherwise Git may trigger auth helpers that assert when invoked from the UI thread.
-            var branchName = sanitizeBranchName(initialBranch)
-
-            fun branchAlreadyExists(name: String): Boolean {
-                return repository.branches.localBranches.any { it.name == name }
-            }
+            val gitWorktreeService = GitWorktreeService.getInstance(project)
+            var rawBranchName = initialBranch.trim()
 
             while (true) {
+                if (rawBranchName.isBlank()) {
+                    val newBranch = Messages.showInputDialog(
+                        project,
+                        "Branch name is empty. Please enter a valid branch name.",
+                        "Invalid Branch Name",
+                        Messages.getWarningIcon(),
+                        null,
+                        null
+                    )
+
+                    if (newBranch.isNullOrBlank()) return@WorktreeListContent null
+                    rawBranchName = newBranch.trim()
+                    continue
+                }
+
+                val looksLikeRemoteRef = rawBranchName.contains('/') && repository.branches.remoteBranches.any { it.nameForRemoteOperations == rawBranchName }
+                if (looksLikeRemoteRef) {
+                    return@WorktreeListContent rawBranchName
+                }
+
+                val branchName = sanitizeBranchName(rawBranchName)
                 if (branchName.isBlank()) {
                     val newBranch = Messages.showInputDialog(
                         project,
@@ -482,12 +598,47 @@ private fun WorktreeManagerContent(project: Project) {
                     )
 
                     if (newBranch.isNullOrBlank()) return@WorktreeListContent null
-                    branchName = sanitizeBranchName(newBranch)
+                    rawBranchName = newBranch.trim()
                     continue
                 }
 
-                if (!branchAlreadyExists(branchName)) {
+                fun localBranchAlreadyExists(name: String): Boolean {
+                    return repository.branches.localBranches.any { it.name == name }
+                }
+
+                if (!localBranchAlreadyExists(branchName)) {
                     return@WorktreeListContent branchName
+                }
+
+                val remoteCandidate = repository.branches.remoteBranches.firstOrNull { it.nameForRemoteOperations == rawBranchName }
+                if (remoteCandidate != null) {
+                    val localName = gitWorktreeService.deriveLocalBranchName(rawBranchName)
+                    val choice = Messages.showDialog(
+                        project,
+                        "Remote branch '$rawBranchName' maps to local branch '$localName', which already exists. What would you like to do?",
+                        "Remote Branch Already Has Local Checkout",
+                        arrayOf("Use existing local branch", "Use another local name…", "Cancel"),
+                        0,
+                        Messages.getWarningIcon()
+                    )
+
+                    when (choice) {
+                        0 -> return@WorktreeListContent localName
+                        1 -> {
+                            val newBranch = Messages.showInputDialog(
+                                project,
+                                "Enter a local branch name for tracking '$rawBranchName':",
+                                "Choose Local Branch Name",
+                                Messages.getQuestionIcon(),
+                                "${localName}-2",
+                                null
+                            )
+                            if (newBranch.isNullOrBlank()) return@WorktreeListContent null
+                            rawBranchName = sanitizeBranchName(newBranch)
+                            continue
+                        }
+                        else -> return@WorktreeListContent null
+                    }
                 }
 
                 val choice = Messages.showDialog(
@@ -511,14 +662,13 @@ private fun WorktreeManagerContent(project: Project) {
                         )
 
                         if (newBranch.isNullOrBlank()) return@WorktreeListContent null
-                        branchName = sanitizeBranchName(newBranch)
+                        rawBranchName = newBranch.trim()
                     }
 
                     else -> return@WorktreeListContent null
                 }
             }
 
-            // Unreachable in practice, but keeps the lambda well-typed.
             return@WorktreeListContent null
         },
         onConfirmDelete = { worktree ->
@@ -703,6 +853,7 @@ private fun WorktreeListContent(
     onOpenWorktree: (WorktreeInfo) -> Unit,
     onCreateWorktree: (name: String, branch: String) -> Unit,
     onCreateWorktreeWithIgnoredFiles: (name: String, branch: String) -> Unit,
+    onCreateFromRemoteBranch: () -> Unit,
     onDeleteWorktree: (WorktreeInfo) -> Unit,
     onRequestWorktreeName: () -> String?,
     onRequestBranchName: (defaultName: String) -> String?,
@@ -745,28 +896,37 @@ private fun WorktreeListContent(
             }
         }
 
-        // Create button at the top
-        OutlinedButton(onClick = {
-            val rawName = onRequestWorktreeName()
-            if (!rawName.isNullOrBlank()) {
-                val worktreeName = onValidateWorktreeName(rawName)
-                if (!worktreeName.isNullOrBlank()) {
-                    val rawBranchName = onRequestBranchName(worktreeName)
-                if (!rawBranchName.isNullOrBlank()) {
-                    val branchName = onValidateBranchName(rawBranchName)
-                    if (!branchName.isNullOrBlank()) {
-                        val copyIgnoredFiles = onRequestCopyIgnoredFiles()
-                        if (copyIgnoredFiles) {
-                            onCreateWorktreeWithIgnoredFiles(worktreeName, branchName)
-                        } else {
-                            onCreateWorktree(worktreeName, branchName)
+        // Create actions at the top
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                val rawName = onRequestWorktreeName()
+                if (!rawName.isNullOrBlank()) {
+                    val worktreeName = onValidateWorktreeName(rawName)
+                    if (!worktreeName.isNullOrBlank()) {
+                        val rawBranchName = onRequestBranchName(worktreeName)
+                        if (!rawBranchName.isNullOrBlank()) {
+                            val branchName = onValidateBranchName(rawBranchName)
+                            if (!branchName.isNullOrBlank()) {
+                                val copyIgnoredFiles = onRequestCopyIgnoredFiles()
+                                if (copyIgnoredFiles) {
+                                    onCreateWorktreeWithIgnoredFiles(worktreeName, branchName)
+                                } else {
+                                    onCreateWorktree(worktreeName, branchName)
+                                }
+                            }
                         }
                     }
                 }
-                }
+            }, enabled = !state.isCreating && !state.isScanning) {
+                Text("Create Worktree")
             }
-        }, enabled = !state.isCreating && !state.isScanning) {
-            Text("Create Worktree")
+
+            OutlinedButton(
+                onClick = onCreateFromRemoteBranch,
+                enabled = !state.isCreating && !state.isScanning
+            ) {
+                Text("Create from Remote Branch")
+            }
         }
 
         // Error message
