@@ -22,6 +22,12 @@ import java.io.File
 class GitWorktreeService(private val project: Project) {
     private val logger = Logger.getInstance(GitWorktreeService::class.java)
 
+    sealed class BranchTarget {
+        data class NewLocal(val name: String) : BranchTarget()
+        data class ExistingLocal(val name: String) : BranchTarget()
+        data class RemoteTracking(val remoteRef: String, val localName: String) : BranchTarget()
+    }
+
     /**
      * Creates a new git worktree
      * @param repository The git repository
@@ -50,14 +56,24 @@ class GitWorktreeService(private val project: Project) {
             }
         }
 
+        val branchTarget = resolveBranchTarget(repository, branchName, createNewBranch)
+
         val handler = GitLineHandler(project, repository.root, GitCommand.WORKTREE)
         handler.addParameters("add")
-        handler.addParameters(worktreePath)
-        if (createNewBranch) {
-            handler.addParameters("-b", branchName)
-        } else {
-            // Use existing branch
-            handler.addParameters(branchName)
+        when (branchTarget) {
+            is BranchTarget.NewLocal -> {
+                handler.addParameters("-b", branchTarget.name)
+                handler.addParameters(worktreePath)
+            }
+            is BranchTarget.ExistingLocal -> {
+                handler.addParameters(worktreePath)
+                handler.addParameters(branchTarget.name)
+            }
+            is BranchTarget.RemoteTracking -> {
+                handler.addParameters("-b", branchTarget.localName)
+                handler.addParameters(worktreePath)
+                handler.addParameters(branchTarget.remoteRef)
+            }
         }
 
         return try {
@@ -253,6 +269,52 @@ class GitWorktreeService(private val project: Project) {
         } catch (_: Exception) {
             false
         }
+    }
+
+    fun remoteBranchExists(repository: GitRepository, remoteRef: String): Boolean {
+        val git = Git.getInstance()
+        val handler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+        handler.addParameters("-r", "--list", remoteRef)
+
+        return try {
+            val result = git.runCommand(handler)
+            if (!result.success()) return false
+            result.output.any { it.isNotBlank() }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @VisibleForTesting
+    internal fun deriveLocalBranchName(remoteRef: String): String {
+        return remoteRef.substringAfter('/', remoteRef)
+    }
+
+    fun resolveBranchTarget(
+        repository: GitRepository,
+        branchName: String,
+        createNewBranch: Boolean = true,
+        preferredLocalName: String? = null
+    ): BranchTarget {
+        val normalized = branchName.trim()
+
+        if (!createNewBranch) {
+            return BranchTarget.ExistingLocal(normalized)
+        }
+
+        if (branchExists(repository, normalized)) {
+            return BranchTarget.ExistingLocal(normalized)
+        }
+
+        if (remoteBranchExists(repository, normalized)) {
+            val localName = preferredLocalName?.trim()?.takeIf { it.isNotBlank() } ?: deriveLocalBranchName(normalized)
+            if (branchExists(repository, localName)) {
+                return BranchTarget.ExistingLocal(localName)
+            }
+            return BranchTarget.RemoteTracking(remoteRef = normalized, localName = localName)
+        }
+
+        return BranchTarget.NewLocal(normalized)
     }
 
     fun getWorktreePath(repository: GitRepository, worktreeName: String): String {
