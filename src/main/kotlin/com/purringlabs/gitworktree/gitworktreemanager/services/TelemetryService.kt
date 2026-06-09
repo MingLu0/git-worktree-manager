@@ -8,7 +8,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.util.SystemInfo
-import com.purringlabs.gitworktree.gitworktreemanager.models.CopyFilesEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorEvent
@@ -182,12 +181,6 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
             }
             is ListWorktreesEvent -> {
                 builder.put("worktree_count", operation.worktreeCount)
-                addErrorFields(builder, operation.error)
-            }
-            is CopyFilesEvent -> {
-                builder.put("item_count", operation.itemCount)
-                builder.put("success_count", operation.successCount)
-                builder.put("failure_count", operation.failureCount)
                 addErrorFields(builder, operation.error)
             }
             is OpenWorktreeEvent -> {

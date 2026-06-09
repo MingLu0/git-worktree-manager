@@ -1,20 +1,15 @@
 package com.purringlabs.gitworktree.gitworktreemanager.viewmodel
 
 import com.intellij.openapi.project.Project
-import com.purringlabs.gitworktree.gitworktreemanager.models.CopyResult
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult
-import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
-import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperations
-import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesScanner
+import com.purringlabs.gitworktree.gitworktreemanager.services.ClaudeCodeContextService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.lang.reflect.Proxy
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -34,8 +29,7 @@ class WorktreeViewModelProgressTest {
             project = fakeProject(),
             coroutineScope = this,
             repository = repository,
-            ignoredFilesService = FakeIgnoredFilesScanner(),
-            fileOpsService = FakeFileOperations
+            claudeCodeContextService = ClaudeCodeContextService(fakeProject())
         )
 
         viewModel.createWorktree(
@@ -75,8 +69,7 @@ class WorktreeViewModelProgressTest {
             project = fakeProject(),
             coroutineScope = this,
             repository = repository,
-            ignoredFilesService = FakeIgnoredFilesScanner(),
-            fileOpsService = FakeFileOperations
+            claudeCodeContextService = ClaudeCodeContextService(fakeProject())
         )
         viewModel.state = viewModel.state.copy(
             worktrees = listOf(
@@ -109,45 +102,6 @@ class WorktreeViewModelProgressTest {
             }
         }
         assertEquals(null, viewModel.state.deletingWorktreePath)
-    }
-
-    @Test
-    fun `scanIgnoredFiles toggles isScanning and updates list`() = runBlocking {
-        val scanStarted = CompletableDeferred<Unit>()
-        val scanGate = CompletableDeferred<Unit>()
-        val expected = listOf(
-            IgnoredFileInfo(
-                relativePath = "build/",
-                type = IgnoredFileInfo.FileType.DIRECTORY,
-                sizeBytes = null,
-                selected = false
-            )
-        )
-        val scanner = FakeIgnoredFilesScanner(
-            scanHandler = {
-                scanStarted.complete(Unit)
-                scanGate.await()
-                Result.success(expected)
-            }
-        )
-        val viewModel = WorktreeViewModel(
-            project = fakeProject(),
-            coroutineScope = this,
-            repository = FakeWorktreeRepository(),
-            ignoredFilesService = scanner,
-            fileOpsService = FakeFileOperations
-        )
-
-        val job = launch { viewModel.scanIgnoredFiles() }
-
-        scanStarted.await()
-        assertTrue(viewModel.state.isScanning)
-
-        scanGate.complete(Unit)
-        job.join()
-
-        assertFalse(viewModel.state.isScanning)
-        assertEquals(expected, viewModel.state.ignoredFiles)
     }
 
     private fun fakeProject(basePath: String = "/tmp"): Project {
@@ -191,19 +145,4 @@ class WorktreeViewModelProgressTest {
         override suspend fun deleteWorktree(worktreePath: String, branchName: String?): Result<DeleteWorktreeResult> = deleteHandler()
     }
 
-    private class FakeIgnoredFilesScanner(
-        private val scanHandler: suspend () -> Result<List<IgnoredFileInfo>> = { Result.success(emptyList()) }
-    ) : IgnoredFilesScanner {
-        override suspend fun scanIgnoredFiles(projectPath: String): Result<List<IgnoredFileInfo>> = scanHandler()
-    }
-
-    private object FakeFileOperations : FileOperations {
-        override suspend fun copyItems(
-            sourceRoot: Path,
-            destRoot: Path,
-            items: List<IgnoredFileInfo>
-        ): CopyResult {
-            return CopyResult(succeeded = emptyList(), failed = emptyList())
-        }
-    }
 }

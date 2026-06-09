@@ -4,15 +4,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.intellij.openapi.project.Project
-import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
+import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption
+import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyResult
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
-import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperations
-import com.purringlabs.gitworktree.gitworktreemanager.services.GitWorktreeService
-import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesScanner
-import git4idea.repo.GitRepositoryManager
+import com.purringlabs.gitworktree.gitworktreemanager.services.ClaudeCodeContextService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import java.nio.file.Paths
 
 /**
  * ViewModel for managing worktree UI state and operations
@@ -22,8 +19,7 @@ class WorktreeViewModel(
     private val project: Project,
     private val coroutineScope: CoroutineScope,
     private val repository: WorktreeRepositoryContract,
-    private val ignoredFilesService: IgnoredFilesScanner,
-    private val fileOpsService: FileOperations
+    private val claudeCodeContextService: ClaudeCodeContextService
 ) {
 
     var state by mutableStateOf(WorktreeState())
@@ -156,59 +152,33 @@ class WorktreeViewModel(
     }
 
     /**
-     * Scans the project for files ignored by .gitignore
-     * Updates state with the list of ignored files
-     */
-    suspend fun scanIgnoredFiles(): Result<List<IgnoredFileInfo>> {
-        state = state.copy(isScanning = true, scanError = null)
-        val result = ignoredFilesService.scanIgnoredFiles(project.basePath ?: "")
-        state = state.copy(
-            isScanning = false,
-            ignoredFiles = result.getOrNull() ?: emptyList(),
-            scanError = result.exceptionOrNull()?.message
-        )
-
-        return result
-    }
-
-    /**
-     * Updates the selection state of ignored files
-     * @param updatedList New list of ignored files with updated selection states
-     */
-    fun updateIgnoredFileSelection(updatedList: List<IgnoredFileInfo>) {
-        state = state.copy(ignoredFiles = updatedList)
-    }
-
-    /**
-     * Creates a new worktree and optionally copies selected ignored files
+     * Creates a new worktree and optionally copies selected Claude Code context.
      * @param worktreeName Name for the worktree directory
      * @param branchName Name of the branch to create/checkout
-     * @param selectedFiles List of ignored files to copy (only selected items will be copied)
-     * @param onSuccess Callback invoked with the worktree path on success
+     * @param selectedOptions Claude context options to copy
+     * @param onSuccess Callback invoked with the worktree path and copy result on success
      * @param onError Callback invoked with error message on failure
      */
-    fun createWorktreeWithIgnoredFiles(
+    fun createWorktreeWithAgentContext(
         worktreeName: String,
         branchName: String,
         createNewBranch: Boolean = true,
-        selectedFiles: List<IgnoredFileInfo>,
-        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult) -> Unit,
+        selectedOptions: List<AgentContextCopyOption>,
+        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult, AgentContextCopyResult?) -> Unit,
         onError: (Throwable) -> Unit
     ) {
         coroutineScope.launch {
             state = state.copy(isCreating = true, error = null)
             try {
-                // 1. Create worktree (existing logic)
                 repository.createWorktree(worktreeName, branchName, createNewBranch)
                     .onSuccess { result ->
-                        // 2. If files selected, copy them
-                        if (selectedFiles.any { it.selected }) {
-                            coroutineScope.launch {
-                                copyIgnoredFiles(worktreeName, selectedFiles)
-                            }
+                        val copyResult = if (selectedOptions.any { it.selected }) {
+                            claudeCodeContextService.copySelectedOptions(selectedOptions)
+                        } else {
+                            null
                         }
                         refreshWorktrees()
-                        onSuccess(result)
+                        onSuccess(result, copyResult)
                     }
                     .onFailure { error ->
                         onError(error)
@@ -217,32 +187,5 @@ class WorktreeViewModel(
                 state = state.copy(isCreating = false)
             }
         }
-    }
-
-    /**
-     * Copies selected ignored files to the new worktree
-     * Updates state with copy result
-     */
-    private suspend fun copyIgnoredFiles(
-        worktreeName: String,
-        selectedFiles: List<IgnoredFileInfo>
-    ) {
-        // Pick a repository whose root still exists on disk.
-        // This must match the selection logic used elsewhere, otherwise we can create a worktree in one repo
-        // and copy ignored files relative to a different (or missing) repo.
-        val gitRepository = GitRepositoryManager.getInstance(project)
-            .repositories
-            .firstOrNull { repo -> java.io.File(repo.root.path).exists() }
-            ?: return
-
-        // Copy relative to the repo root (not project.basePath), so multi-root / moved-project cases behave.
-        val sourceRoot = Paths.get(gitRepository.root.path)
-
-        val gitWorktreeService = GitWorktreeService.getInstance(project)
-        val destPath = gitWorktreeService.getWorktreePath(gitRepository, worktreeName)
-        val destRoot = Paths.get(destPath)
-
-        val result = fileOpsService.copyItems(sourceRoot, destRoot, selectedFiles)
-        state = state.copy(copyResult = result)
     }
 }
