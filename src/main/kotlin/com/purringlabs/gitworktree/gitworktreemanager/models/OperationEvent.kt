@@ -54,21 +54,6 @@ data class ListWorktreesEvent(
 }
 
 @Serializable
-data class CopyFilesEvent(
-    override val operationId: String,
-    override val startTime: Long,
-    override val durationMs: Long,
-    override val success: Boolean,
-    override val context: TelemetryContext,
-    val itemCount: Int,
-    val successCount: Int,
-    val failureCount: Int,
-    val error: StructuredError?
-) : OperationEvent {
-    override val operationType: String = "COPY_FILES"
-}
-
-@Serializable
 data class OpenWorktreeEvent(
     override val operationId: String,
     override val startTime: Long,
