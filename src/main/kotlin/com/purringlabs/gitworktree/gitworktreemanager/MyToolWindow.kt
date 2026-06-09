@@ -179,7 +179,9 @@ private fun WorktreeManagerContent(project: Project) {
 
             val gitWorktreeService = GitWorktreeService.getInstance(project)
             val destinationPath = Paths.get(gitWorktreeService.getWorktreePath(repository, name))
-            val detectedOptions = claudeCodeContextService.detectCopyOptions(
+            val detectedOptions = detectAgentContextOptionsInBackground(
+                project = project,
+                service = claudeCodeContextService,
                 sourceRepoPath = Paths.get(repository.root.path),
                 destinationWorktreePath = destinationPath
             )
@@ -654,6 +656,36 @@ private fun listWorktreesInBackground(project: Project, repository: GitRepositor
         throw e
     } catch (_: Exception) {
         null
+    }
+}
+
+private fun detectAgentContextOptionsInBackground(
+    project: Project,
+    service: ClaudeCodeContextService,
+    sourceRepoPath: java.nio.file.Path,
+    destinationWorktreePath: java.nio.file.Path
+): List<com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption> {
+    return try {
+        ProgressManager.getInstance().runProcessWithProgressSynchronously(
+            ThrowableComputable {
+                service.detectCopyOptions(
+                    sourceRepoPath = sourceRepoPath,
+                    destinationWorktreePath = destinationWorktreePath
+                )
+            },
+            "Detecting Claude Code context...",
+            true,
+            project
+        )
+    } catch (e: ProcessCanceledException) {
+        emptyList()
+    } catch (e: Exception) {
+        Messages.showWarningDialog(
+            project,
+            "Failed to detect Claude Code context. The worktree will be created without copying agent context.\n\n${e.message ?: e.javaClass.simpleName}",
+            "Claude Context Detection Failed"
+        )
+        emptyList()
     }
 }
 

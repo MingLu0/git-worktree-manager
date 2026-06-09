@@ -50,7 +50,7 @@ class ClaudeCodeContextService(private val project: Project) {
         }
 
         val sourceSessionDir = claudeProjectSessionPath(claudeHome, sourceRepoPath)
-        if (sourceSessionDir.exists() && sourceSessionDir.isDirectory()) {
+        if (!isWindows() && sourceSessionDir.exists() && sourceSessionDir.isDirectory()) {
             options.add(
                 AgentContextCopyOption(
                     id = "claude-session-history",
@@ -84,40 +84,64 @@ class ClaudeCodeContextService(private val project: Project) {
         }
 
         return try {
-            copyDirectory(
-                sourceRoot = option.sourcePath,
-                destinationRoot = option.destinationPath,
-                exclude = { relativePath ->
-                    option.type == AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT && isPrivateClaudeProjectPath(relativePath)
-                }
-            )
-            AgentContextCopyResult(copied = listOf(option.displayName))
+            if (option.type == AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT) {
+                copyDirectorySkippingExisting(
+                    option = option,
+                    exclude = { relativePath -> isPrivateClaudeProjectPath(relativePath) }
+                )
+            } else {
+                copyDirectorySkippingExisting(
+                    option = option,
+                    exclude = { false }
+                )
+            }
         } catch (e: Exception) {
             AgentContextCopyResult(failed = listOf(option.displayName to (e.message ?: e.javaClass.simpleName)))
         }
     }
 
-    private fun copyDirectory(sourceRoot: Path, destinationRoot: Path, exclude: (Path) -> Boolean) {
-        Files.walkFileTree(sourceRoot, object : FileVisitor<Path> {
+    private fun copyDirectorySkippingExisting(
+        option: AgentContextCopyOption,
+        exclude: (Path) -> Boolean
+    ): AgentContextCopyResult {
+        val copied = mutableListOf<String>()
+        val skipped = mutableListOf<Pair<String, String>>()
+        val failed = mutableListOf<Pair<String, String>>()
+
+        // Do not pass FOLLOW_LINKS. Claude context may contain local symlinks, and copying those could escape roots.
+        Files.walkFileTree(option.sourcePath, object : FileVisitor<Path> {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                val relativePath = sourceRoot.relativize(dir)
+                val relativePath = option.sourcePath.relativize(dir)
                 if (relativePath.nameCount > 0 && exclude(relativePath)) return FileVisitResult.SKIP_SUBTREE
-                Files.createDirectories(destinationRoot.resolve(relativePath))
+                val destinationDirectory = option.destinationPath.resolve(relativePath).normalize()
+                if (!destinationDirectory.startsWith(option.destinationPath.normalize())) {
+                    throw IOException("Refusing to copy outside destination root: $relativePath")
+                }
+                Files.createDirectories(destinationDirectory)
                 return FileVisitResult.CONTINUE
             }
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                val relativePath = sourceRoot.relativize(file)
+                val relativePath = option.sourcePath.relativize(file)
                 if (!exclude(relativePath)) {
-                    val destinationFile = destinationRoot.resolve(relativePath)
-                    destinationFile.parent?.let { Files.createDirectories(it) }
-                    Files.copy(file, destinationFile, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING)
+                    val destinationFile = option.destinationPath.resolve(relativePath)
+                    if (!file.normalize().startsWith(option.sourcePath.normalize()) || !destinationFile.normalize().startsWith(option.destinationPath.normalize())) {
+                        throw IOException("Refusing to copy outside allowed roots: $relativePath")
+                    }
+                    if (Files.exists(destinationFile)) {
+                        skipped.add("${option.displayName}: $relativePath" to "Destination already exists")
+                    } else {
+                        Files.copy(file, destinationFile, StandardCopyOption.COPY_ATTRIBUTES)
+                        copied.add("${option.displayName}: $relativePath")
+                    }
                 }
                 return FileVisitResult.CONTINUE
             }
 
             override fun visitFileFailed(file: Path, exc: IOException?): FileVisitResult {
-                throw exc ?: IOException("Failed to visit $file")
+                val relativePath = runCatching { option.sourcePath.relativize(file).toString() }.getOrElse { file.toString() }
+                failed.add("${option.displayName}: $relativePath" to (exc?.message ?: "Failed to visit file"))
+                return FileVisitResult.CONTINUE
             }
 
             override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
@@ -125,6 +149,8 @@ class ClaudeCodeContextService(private val project: Project) {
                 return FileVisitResult.CONTINUE
             }
         })
+
+        return AgentContextCopyResult(copied = copied, skipped = skipped, failed = failed)
     }
 
     companion object {
@@ -136,23 +162,33 @@ class ClaudeCodeContextService(private val project: Project) {
             return Path.of(System.getProperty("user.home"), ".claude")
         }
 
+        fun isWindows(): Boolean {
+            return System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+        }
+
         fun claudeProjectSessionPath(claudeHome: Path, projectPath: Path): Path {
             return claudeHome.resolve("projects").resolve(claudeProjectKey(projectPath))
         }
 
         fun claudeProjectKey(projectPath: Path): String {
-            return projectPath.toAbsolutePath().normalize().toString().replace('/', '-')
+            // Claude Code currently keeps the leading separator as a leading '-': /Users/me/repo -> -Users-me-repo.
+            return projectPath.toAbsolutePath().normalize().toString().replace('/', '-').replace('\\', '-')
         }
 
         fun isPrivateClaudeProjectPath(relativePath: Path): Boolean {
             val pathParts = (0 until relativePath.nameCount).map { index -> relativePath.getName(index).toString() }
             val fileName = relativePath.name
-            if (pathParts.any { it == "secrets" || it == "tokens" || it == "credentials" }) return true
+            if (pathParts.any { isPrivateName(it) }) return true
             if (fileName == "settings.local.json") return true
-            if (fileName == ".env" || fileName.startsWith(".env.")) return true
-            return fileName.contains(".local.") ||
-                fileName.contains(".private.") ||
-                fileName.contains(".secret.")
+            return false
+        }
+
+        private val sensitiveNamePattern = Regex("(^|[._-])(local|private|secret|secrets|token|tokens|credential|credentials)([._-]|$)")
+
+        private fun isPrivateName(name: String): Boolean {
+            val lowerName = name.lowercase()
+            if (lowerName == ".env" || lowerName.startsWith(".env.")) return true
+            return sensitiveNamePattern.containsMatchIn(lowerName)
         }
     }
 }

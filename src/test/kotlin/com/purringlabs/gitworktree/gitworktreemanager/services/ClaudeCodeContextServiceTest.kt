@@ -97,12 +97,105 @@ class ClaudeCodeContextServiceTest {
     }
 
     @Test
+    fun `copySelectedOptions returns empty result when all options are unselected`() = runBlocking {
+        val tempDir = Files.createTempDirectory("claude-unselected-test")
+        val sourceClaude = tempDir.resolve("repo/.claude").apply { createDirectories() }
+        val destinationClaude = tempDir.resolve("repo-feature/.claude")
+        sourceClaude.resolve("commands").createDirectories()
+        sourceClaude.resolve("commands/review.md").writeText("source")
+
+        val result = service().copySelectedOptions(
+            listOf(
+                AgentContextCopyOption(
+                    id = "claude-project-context",
+                    displayName = "Claude Code project context (.claude/)",
+                    description = "",
+                    sourcePath = sourceClaude,
+                    destinationPath = destinationClaude,
+                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
+                    selected = false,
+                    sensitive = false
+                )
+            )
+        )
+
+        assertFalse(result.hasEntries)
+        assertFalse(destinationClaude.exists())
+    }
+
+    @Test
+    fun `copySelectedOptions skips option when source no longer exists`() = runBlocking {
+        val tempDir = Files.createTempDirectory("claude-missing-source-test")
+        val missingSource = tempDir.resolve("missing/.claude")
+
+        val result = service().copySelectedOptions(
+            listOf(
+                AgentContextCopyOption(
+                    id = "claude-project-context",
+                    displayName = "Claude Code project context (.claude/)",
+                    description = "",
+                    sourcePath = missingSource,
+                    destinationPath = tempDir.resolve("repo-feature/.claude"),
+                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
+                    selected = true,
+                    sensitive = false
+                )
+            )
+        )
+
+        assertEquals(0, result.copiedCount)
+        assertEquals(1, result.skippedCount)
+    }
+
+    @Test
+    fun `copySelectedOptions skips existing Claude project context files`() = runBlocking {
+        val tempDir = Files.createTempDirectory("claude-existing-context-test")
+        val sourceClaude = tempDir.resolve("repo/.claude").apply { createDirectories() }
+        val destinationClaude = tempDir.resolve("repo-feature/.claude").apply { createDirectories() }
+        sourceClaude.resolve("commands").createDirectories()
+        destinationClaude.resolve("commands").createDirectories()
+        sourceClaude.resolve("commands/review.md").writeText("source")
+        destinationClaude.resolve("commands/review.md").writeText("existing")
+
+        val result = service().copySelectedOptions(
+            listOf(
+                AgentContextCopyOption(
+                    id = "claude-project-context",
+                    displayName = "Claude Code project context (.claude/)",
+                    description = "",
+                    sourcePath = sourceClaude,
+                    destinationPath = destinationClaude,
+                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
+                    selected = true,
+                    sensitive = false
+                )
+            )
+        )
+
+        assertEquals(0, result.copiedCount)
+        assertEquals(1, result.skippedCount)
+        assertEquals("existing", destinationClaude.resolve("commands/review.md").readText())
+    }
+
+    @Test
     fun `private Claude path matcher excludes expected names`() {
         assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("settings.local.json")))
         assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("foo.secret.json")))
         assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("secrets", "token.txt")))
+        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("my-secrets", "value.txt")))
+        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("api-credentials", "value.txt")))
+        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of(".env", "token.txt")))
         assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of(".env.local")))
         assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("commands", "review.md")))
+        assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("commands", "tokenize.md")))
+        assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("authenticate-locally.md")))
+    }
+
+    @Test
+    fun `claudeProjectKey keeps leading absolute path separator as hyphen`() {
+        val key = ClaudeCodeContextService.claudeProjectKey(Path.of("/Users/ming/project"))
+
+        assertEquals("-Users-ming-project", key)
     }
 
     private fun service(): ClaudeCodeContextService = ClaudeCodeContextService(fakeProject())

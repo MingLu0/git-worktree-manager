@@ -1,15 +1,11 @@
 package com.purringlabs.gitworktree.gitworktreemanager.viewmodel
 
 import com.intellij.openapi.project.Project
-import com.purringlabs.gitworktree.gitworktreemanager.models.CopyResult
-import com.purringlabs.gitworktree.gitworktreemanager.models.IgnoredFileInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
-import com.purringlabs.gitworktree.gitworktreemanager.services.FileOperations
-import com.purringlabs.gitworktree.gitworktreemanager.services.IgnoredFilesScanner
+import com.purringlabs.gitworktree.gitworktreemanager.services.ClaudeCodeContextService
 import kotlinx.coroutines.runBlocking
 import java.lang.reflect.Proxy
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -19,7 +15,7 @@ class WorktreeViewModelDeletePreconditionsTest {
     @Test
     fun `deleteWorktree rejects locked worktree`() = runBlocking {
         val repo = FakeRepo()
-        val vm = WorktreeViewModel(fakeProject(), this, repo, FakeScanner, FakeFileOps)
+        val vm = WorktreeViewModel(fakeProject(), this, repo, ClaudeCodeContextService(fakeProject()))
         vm.state = vm.state.copy(
             worktrees = listOf(
                 WorktreeInfo(
@@ -44,7 +40,7 @@ class WorktreeViewModelDeletePreconditionsTest {
     @Test
     fun `deleteWorktree rejects prunable worktree`() = runBlocking {
         val repo = FakeRepo()
-        val vm = WorktreeViewModel(fakeProject(), this, repo, FakeScanner, FakeFileOps)
+        val vm = WorktreeViewModel(fakeProject(), this, repo, ClaudeCodeContextService(fakeProject()))
         vm.state = vm.state.copy(
             worktrees = listOf(
                 WorktreeInfo(
@@ -76,15 +72,6 @@ class WorktreeViewModelDeletePreconditionsTest {
             Result.success(com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeResult(true, true)).also {
                 deleteCalls++
             }
-    }
-
-    private object FakeScanner : IgnoredFilesScanner {
-        override suspend fun scanIgnoredFiles(projectPath: String) = Result.success(emptyList<IgnoredFileInfo>())
-    }
-
-    private object FakeFileOps : FileOperations {
-        override suspend fun copyItems(sourceRoot: Path, destRoot: Path, items: List<IgnoredFileInfo>) =
-            CopyResult(succeeded = emptyList(), failed = emptyList())
     }
 
     private fun fakeProject(basePath: String = "/tmp"): Project {
