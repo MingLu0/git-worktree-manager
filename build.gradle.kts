@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.16"
+version = "1.1.18"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>sanitize branch names entered in create-worktree flow</li>
+              <li>Prepare release 1.1.18</li>
             </ul>
 """.trimIndent()
     }
