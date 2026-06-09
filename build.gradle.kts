@@ -42,9 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>What's new</b>
+            <b>Fixes</b>
             <ul>
-              <li>Prepare release 1.1.18</li>
+              <li>improve create-from-remote-branch flow</li>
             </ul>
 """.trimIndent()
     }
