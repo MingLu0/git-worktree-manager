@@ -5,8 +5,6 @@ import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.extensions.PluginId
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.util.SystemInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
@@ -253,13 +251,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     }
 
     private fun getPluginVersion(): String {
-        return try {
-            PluginManagerCore.getPlugin(
-                PluginId.getId("com.purringlabs.gitworktree.git-worktree-manager")
-            )?.version ?: "unknown"
-        } catch (_: Exception) {
-            "unknown"
-        }
+        return TelemetryServiceImpl::class.java.`package`?.implementationVersion ?: "unknown"
     }
 
     private object ApiKeyHolder {
