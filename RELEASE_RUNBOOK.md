@@ -33,13 +33,15 @@ GitHub → Actions → **Release to JetBrains Marketplace** → Run workflow:
 This should run `clean buildPlugin signPlugin` and **NOT** publish.
 
 ### 3) Publish by tag
+
+**Prerequisite: merge the release PR to `master` first.**
+
 Create an annotated tag matching the Gradle version:
 
 ```bash
-git pull
+git checkout master && git pull origin master
 # example: version=1.1.0
-git tag v1.1.0
-
+git tag -a v1.1.0 -m "Release v1.1.0"
 git push origin v1.1.0
 ```
 
