@@ -5,7 +5,10 @@
       "WebSearch",
       "WebFetch(domain:plugins.jetbrains.com)",
       "Bash(./gradlew buildPlugin:*)",
-      "Bash(./gradlew clean build:*)"
+      "Bash(./gradlew clean build:*)",
+      "Skill(mempalace:search)",
+      "Skill(mempalace:mempalace)",
+      "mcp__plugin_mempalace_mempalace__mempalace_search"
     ],
     "deny": [],
     "ask": []
