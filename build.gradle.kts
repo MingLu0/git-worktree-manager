@@ -44,7 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>remove internal IntelliJ Platform API usage from telemetry initialization</li>
+              <li>Various stability improvements.</li>
             </ul>
 """.trimIndent()
     }
