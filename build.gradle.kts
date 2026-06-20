@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.18"
+version = "1.1.19"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>improve create-from-remote-branch flow</li>
+              <li>Various stability improvements.</li>
             </ul>
 """.trimIndent()
     }
@@ -58,6 +58,12 @@ intellijPlatform {
     publishing {
         token = providers.environmentVariable("INTELLIJ_PLATFORM_PUBLISHING_TOKEN")
     }
+
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
 tasks {
@@ -65,6 +71,12 @@ tasks {
     withType<JavaCompile> {
         sourceCompatibility = "21"
         targetCompatibility = "21"
+    }
+
+    withType<Jar> {
+        manifest {
+            attributes["Implementation-Version"] = project.version.toString()
+        }
     }
 }
 
