@@ -164,7 +164,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("timestamp", System.currentTimeMillis())
                 put("duration_ms", operation.durationMs)
                 put("success", operation.success)
-                addContextFields(this, operation.context)
+                addContextFields(this, operation.context, includeIdentifiers = true)
                 addOperationFields(this, operation)
             })
         }
