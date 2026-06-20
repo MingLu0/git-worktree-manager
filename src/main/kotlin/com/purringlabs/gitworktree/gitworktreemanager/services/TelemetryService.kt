@@ -193,7 +193,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("eventType", "SESSION_HEARTBEAT")
                 put("event_type_name", "SESSION_HEARTBEAT")
                 put("timestamp", System.currentTimeMillis())
-                addContextFields(this, context)
+                addContextFields(this, context, includeIdentifiers = true)
             })
         }
 
@@ -202,7 +202,8 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
 
     private fun addContextFields(
         builder: kotlinx.serialization.json.JsonObjectBuilder,
-        context: TelemetryContext
+        context: TelemetryContext,
+        includeIdentifiers: Boolean = false
     ) {
         builder.put("ide_version", context.ideVersion)
         builder.put("plugin_version", context.pluginVersion)
@@ -210,8 +211,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         builder.put("os_version", context.osVersion)
         builder.put("jvm_version", context.jvmVersion)
         builder.put("country_code", context.countryCode)
-        builder.put("install_id", context.installId)
-        builder.put("session_id", context.sessionId)
+        if (includeIdentifiers) {
+            builder.put("install_id", context.installId)
+            builder.put("session_id", context.sessionId)
+        }
         builder.put("ide_product", context.ideProduct)
     }
 
