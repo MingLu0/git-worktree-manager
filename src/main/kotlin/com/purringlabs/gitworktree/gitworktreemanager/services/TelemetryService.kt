@@ -179,7 +179,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("event_type_name", "ERROR_EVENT")
                 put("error_id", error.errorId)
                 put("timestamp", error.timestamp)
-                addContextFields(this, error.context)
+                addContextFields(this, error.context, includeIdentifiers = true)
                 addErrorFields(this, error.error)
             })
         }
