@@ -3,6 +3,7 @@ package com.purringlabs.gitworktree.gitworktreemanager.services
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
@@ -28,10 +29,20 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.Base64
 import java.util.Locale
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 interface TelemetryService {
     fun recordOperation(operation: OperationEvent)
     fun recordError(error: ErrorEvent)
+
+    /**
+     * Records a passive presence signal for the current IDE session. Unlike operations, this fires
+     * even when the user takes no explicit action, so daily-active-user counts are not biased toward
+     * users who happen to mutate worktrees. Fires at most once per IDE launch.
+     */
+    fun recordSessionHeartbeat()
+
     fun getContext(): TelemetryContext
     fun isEnabled(): Boolean
 }
@@ -46,6 +57,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
         .build()
     private val context: TelemetryContext
     private val newRelicEnabled: Boolean
+    // Random per-IDE-launch identifier; distinct from the persisted, anonymous install id.
+    private val sessionId: String = UUID.randomUUID().toString()
+    // Ensures the passive session heartbeat is sent at most once per IDE launch.
+    private val heartbeatSent = AtomicBoolean(false)
 
     init {
         context = TelemetryContext(
@@ -54,7 +69,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
             osName = SystemInfo.OS_NAME,
             osVersion = SystemInfo.OS_VERSION,
             jvmVersion = SystemInfo.JAVA_VERSION,
-            countryCode = Locale.getDefault().country.ifBlank { "unknown" }
+            countryCode = Locale.getDefault().country.ifBlank { "unknown" },
+            installId = getInstallId(),
+            sessionId = sessionId,
+            ideProduct = getIdeProduct()
         )
         newRelicEnabled = initializeNewRelic()
     }
@@ -84,6 +102,22 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 }
             } catch (e: Exception) {
                 logger.error("Failed to record error telemetry", e)
+            }
+        }
+    }
+
+    override fun recordSessionHeartbeat() {
+        if (!heartbeatSent.compareAndSet(false, true)) return
+        runAsync {
+            try {
+                val payload = buildHeartbeatPayload()
+                if (newRelicEnabled) {
+                    sendPayload(payload)
+                } else {
+                    logger.info("TELEMETRY_HEARTBEAT: $payload")
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to record session heartbeat telemetry", e)
             }
         }
     }
@@ -127,14 +161,10 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("event_type_name", operation.operationType)
                 put("operation_type", operation.operationType)
                 put("operation_id", operation.operationId)
+                put("timestamp", System.currentTimeMillis())
                 put("duration_ms", operation.durationMs)
                 put("success", operation.success)
-                put("ide_version", operation.context.ideVersion)
-                put("plugin_version", operation.context.pluginVersion)
-                put("os_name", operation.context.osName)
-                put("os_version", operation.context.osVersion)
-                put("jvm_version", operation.context.jvmVersion)
-                put("country_code", operation.context.countryCode)
+                addContextFields(this, operation.context, includeIdentifiers = true)
                 addOperationFields(this, operation)
             })
         }
@@ -149,17 +179,43 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
                 put("event_type_name", "ERROR_EVENT")
                 put("error_id", error.errorId)
                 put("timestamp", error.timestamp)
-                put("ide_version", error.context.ideVersion)
-                put("plugin_version", error.context.pluginVersion)
-                put("os_name", error.context.osName)
-                put("os_version", error.context.osVersion)
-                put("jvm_version", error.context.jvmVersion)
-                put("country_code", error.context.countryCode)
+                addContextFields(this, error.context, includeIdentifiers = true)
                 addErrorFields(this, error.error)
             })
         }
 
         return json.encodeToString(JsonArray.serializer(), payload)
+    }
+
+    private fun buildHeartbeatPayload(): String {
+        val payload = buildJsonArray {
+            add(buildJsonObject {
+                put("eventType", "SESSION_HEARTBEAT")
+                put("event_type_name", "SESSION_HEARTBEAT")
+                put("timestamp", System.currentTimeMillis())
+                addContextFields(this, context, includeIdentifiers = true)
+            })
+        }
+
+        return json.encodeToString(JsonArray.serializer(), payload)
+    }
+
+    private fun addContextFields(
+        builder: kotlinx.serialization.json.JsonObjectBuilder,
+        context: TelemetryContext,
+        includeIdentifiers: Boolean = false
+    ) {
+        builder.put("ide_version", context.ideVersion)
+        builder.put("plugin_version", context.pluginVersion)
+        builder.put("os_name", context.osName)
+        builder.put("os_version", context.osVersion)
+        builder.put("jvm_version", context.jvmVersion)
+        builder.put("country_code", context.countryCode)
+        if (includeIdentifiers) {
+            builder.put("install_id", context.installId)
+            builder.put("session_id", context.sessionId)
+        }
+        builder.put("ide_product", context.ideProduct)
     }
 
     private fun addOperationFields(
@@ -247,6 +303,22 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
             block()
         } else {
             application.executeOnPooledThread(block)
+        }
+    }
+
+    private fun getInstallId(): String {
+        return try {
+            InstallIdentityService.getInstance().getInstallId()
+        } catch (_: Exception) {
+            "unknown"
+        }
+    }
+
+    private fun getIdeProduct(): String {
+        return try {
+            ApplicationNamesInfo.getInstance().fullProductName
+        } catch (_: Exception) {
+            "unknown"
         }
     }
 
