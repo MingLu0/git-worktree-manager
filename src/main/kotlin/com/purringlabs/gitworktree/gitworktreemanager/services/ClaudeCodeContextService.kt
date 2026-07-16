@@ -6,6 +6,13 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOpt
 import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.FileVisitor
@@ -15,7 +22,9 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
+import kotlin.io.path.nameWithoutExtension
 
 @Service(Service.Level.PROJECT)
 class ClaudeCodeContextService(private val project: Project) {
@@ -33,7 +42,9 @@ class ClaudeCodeContextService(private val project: Project) {
         claudeHome: Path
     ): List<AgentContextCopyOption> {
         val options = mutableListOf<AgentContextCopyOption>()
-        val sourceClaudeDir = sourceRepoPath.resolve(".claude").normalize()
+        val absoluteSourceRepoPath = sourceRepoPath.toAbsolutePath().normalize()
+        val absoluteDestinationWorktreePath = destinationWorktreePath.toAbsolutePath().normalize()
+        val sourceClaudeDir = absoluteSourceRepoPath.resolve(".claude").normalize()
         if (sourceClaudeDir.exists() && sourceClaudeDir.isDirectory()) {
             options.add(
                 AgentContextCopyOption(
@@ -41,7 +52,7 @@ class ClaudeCodeContextService(private val project: Project) {
                     displayName = "Claude Code project context (.claude/)",
                     description = "Copies shared Claude commands, agents, skills, and project guidance. Local/private files are excluded.",
                     sourcePath = sourceClaudeDir,
-                    destinationPath = destinationWorktreePath.resolve(".claude").normalize(),
+                    destinationPath = absoluteDestinationWorktreePath.resolve(".claude").normalize(),
                     type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
                     selected = true,
                     sensitive = false
@@ -49,20 +60,33 @@ class ClaudeCodeContextService(private val project: Project) {
             )
         }
 
-        val sourceSessionDir = claudeProjectSessionPath(claudeHome, sourceRepoPath)
+        val sourceSessionDir = claudeProjectSessionPath(claudeHome, absoluteSourceRepoPath)
         if (!isWindows() && sourceSessionDir.exists() && sourceSessionDir.isDirectory()) {
-            options.add(
-                AgentContextCopyOption(
-                    id = "claude-session-history",
-                    displayName = "Claude Code session history",
-                    description = "May include prompts, code snippets, secrets, and local paths. Copied only when explicitly selected.",
-                    sourcePath = sourceSessionDir,
-                    destinationPath = claudeProjectSessionPath(claudeHome, destinationWorktreePath),
-                    type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
-                    selected = false,
-                    sensitive = true
-                )
-            )
+            val destinationSessionDir = claudeProjectSessionPath(claudeHome, absoluteDestinationWorktreePath)
+            Files.list(sourceSessionDir).use { entries ->
+                entries.filter { it.isRegularFile() && it.name.endsWith(".jsonl", ignoreCase = true) }
+                    .sorted(compareByDescending { runCatching { Files.getLastModifiedTime(it) }.getOrNull() })
+                    .forEach { sessionFile ->
+                        val sessionId = sessionFile.nameWithoutExtension
+                        val title = sessionTitle(sessionFile, sessionId)
+                        val modified = runCatching { Files.getLastModifiedTime(sessionFile) }.getOrNull()
+                        options.add(
+                            AgentContextCopyOption(
+                                id = "claude-session-$sessionId",
+                                displayName = title,
+                                description = "Session $sessionId — may include prompts, code snippets, secrets, and local paths.",
+                                sourcePath = sessionFile.normalize(),
+                                destinationPath = destinationSessionDir.resolve(sessionFile.fileName).normalize(),
+                                type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
+                                selected = false,
+                                sensitive = true,
+                                sessionId = sessionId,
+                                title = title,
+                                lastModified = modified
+                            )
+                        )
+                    }
+            }
         }
 
         return options
@@ -79,26 +103,91 @@ class ClaudeCodeContextService(private val project: Project) {
             return AgentContextCopyResult(skipped = listOf(option.displayName to "Source no longer exists"))
         }
 
-        if (option.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY && Files.exists(option.destinationPath)) {
-            return AgentContextCopyResult(skipped = listOf(option.displayName to "Destination session history already exists"))
-        }
-
         return try {
             if (option.type == AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT) {
                 copyDirectorySkippingExisting(
                     option = option,
                     exclude = { relativePath -> isPrivateClaudeProjectPath(relativePath) }
                 )
+            } else if (option.sessionId != null && Files.isRegularFile(option.sourcePath)) {
+                copySession(option)
             } else {
-                copyDirectorySkippingExisting(
-                    option = option,
-                    exclude = { false }
-                )
+                // Compatibility for callers that still construct the old whole-directory option.
+                copyDirectorySkippingExisting(option = option, exclude = { false })
             }
         } catch (e: Exception) {
             AgentContextCopyResult(failed = listOf(option.displayName to (e.message ?: e.javaClass.simpleName)))
         }
     }
+
+    private fun copySession(option: AgentContextCopyOption): AgentContextCopyResult {
+        val copied = mutableListOf<String>()
+        val skipped = mutableListOf<Pair<String, String>>()
+        val failed = mutableListOf<Pair<String, String>>()
+        Files.createDirectories(option.destinationPath.parent)
+        if (Files.exists(option.destinationPath)) {
+            skipped.add(option.displayName to "Destination session file already exists")
+        } else {
+            runCatching {
+                Files.copy(option.sourcePath, option.destinationPath, StandardCopyOption.COPY_ATTRIBUTES)
+                copied.add(option.displayName)
+            }.onFailure { failed.add(option.displayName to (it.message ?: it.javaClass.simpleName)) }
+        }
+
+        val companion = option.sourcePath.parent.resolve(option.sourcePath.nameWithoutExtension)
+        if (Files.isDirectory(companion)) {
+            val destinationCompanion = option.destinationPath.parent.resolve(companion.fileName.toString())
+            val companionResult = copyDirectorySkippingExisting(
+                option.copy(sourcePath = companion, destinationPath = destinationCompanion),
+                exclude = { false }
+            )
+            copied += companionResult.copied
+            skipped += companionResult.skipped
+            failed += companionResult.failed
+        }
+        return AgentContextCopyResult(copied, skipped, failed)
+    }
+
+    private fun sessionTitle(file: Path, sessionId: String): String {
+        val userPrompts = mutableListOf<String>()
+        var providedTitle: String? = null
+        runCatching {
+            Files.newBufferedReader(file).useLines { lines ->
+                lines.forEach { line ->
+                    val element = runCatching { Json.parseToJsonElement(line) }.getOrNull() ?: return@forEach
+                    val obj = element as? JsonObject
+                    val type = obj?.string("type")?.lowercase()
+                    if (type == "summary" || type == "custom-title" || type == "title") {
+                        val candidate = (obj.string("summary") ?: obj.string("title") ?: obj.string("customTitle"))
+                            ?.cleanText()
+                            ?.takeIf { it.isNotEmpty() }
+                        if (providedTitle == null) providedTitle = candidate
+                    }
+                    if (type == "user") extractUserText(obj)?.cleanText()?.takeIf { it.isNotEmpty() }?.let(userPrompts::add)
+                }
+            }
+        }
+        return (providedTitle ?: userPrompts.firstOrNull() ?: sessionId).truncateTitle()
+    }
+
+    private fun extractUserText(obj: JsonObject?): String? {
+        val message = obj?.get("message")
+        return when (message) {
+            is JsonObject -> textFromElement(message["content"])
+            else -> textFromElement(message) ?: obj?.string("content")
+        }
+    }
+
+    private fun textFromElement(element: JsonElement?): String? = when (element) {
+        is JsonPrimitive -> element.contentOrNull
+        is JsonObject -> element["text"]?.let(::textFromElement) ?: element["content"]?.let(::textFromElement)
+        is JsonArray -> element.mapNotNull(::textFromElement).joinToString(" ").takeIf { it.isNotBlank() }
+        else -> null
+    }
+
+    private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
+    private fun String.cleanText(): String = replace(Regex("\\s+"), " ").trim()
+    private fun String.truncateTitle(): String = if (length > 100) take(97).trimEnd() + "…" else this
 
     private fun copyDirectorySkippingExisting(
         option: AgentContextCopyOption,
@@ -167,7 +256,9 @@ class ClaudeCodeContextService(private val project: Project) {
         }
 
         fun claudeProjectSessionPath(claudeHome: Path, projectPath: Path): Path {
-            return claudeHome.resolve("projects").resolve(claudeProjectKey(projectPath))
+            return claudeHome.toAbsolutePath().normalize()
+                .resolve("projects")
+                .resolve(claudeProjectKey(projectPath))
         }
 
         fun claudeProjectKey(projectPath: Path): String {
