@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.19"
+version = "1.1.20"
 
 repositories {
     mavenCentral()
