@@ -9,6 +9,7 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOpt
 import java.awt.BorderLayout
 import java.awt.Dimension
 import javax.swing.JComponent
+import javax.swing.JButton
 import javax.swing.JPanel
 import javax.swing.table.AbstractTableModel
 
@@ -42,8 +43,20 @@ class AgentContextCopyDialog(
         table.columnModel.getColumn(2).preferredWidth = 420
 
         val scrollPane = JBScrollPane(table)
-        scrollPane.preferredSize = Dimension(760, 180)
+        scrollPane.preferredSize = Dimension(820, 260)
         panel.add(scrollPane, BorderLayout.CENTER)
+
+        val sessionOptions = tableModel.options().filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+        if (sessionOptions.isNotEmpty()) {
+            val controls = JPanel()
+            controls.add(JButton("Select all sessions").apply {
+                addActionListener { tableModel.setSessionsSelected(true) }
+            })
+            controls.add(JButton("Deselect all sessions").apply {
+                addActionListener { tableModel.setSessionsSelected(false) }
+            })
+            panel.add(controls, BorderLayout.SOUTH)
+        }
         return panel
     }
 
@@ -52,7 +65,7 @@ class AgentContextCopyDialog(
     private class AgentContextCopyTableModel(
         private val options: MutableList<AgentContextCopyOption>
     ) : AbstractTableModel() {
-        private val columnNames = arrayOf("Copy", "Context", "Description")
+        private val columnNames = arrayOf("Copy", "Session / Context", "Details")
 
         override fun getRowCount(): Int = options.size
         override fun getColumnCount(): Int = columnNames.size
@@ -69,7 +82,12 @@ class AgentContextCopyDialog(
             return when (columnIndex) {
                 0 -> option.selected
                 1 -> option.displayName
-                2 -> option.description
+                2 -> if (option.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY) {
+                    buildString {
+                        append(option.lastModified?.toString() ?: "Unknown time")
+                        option.sessionId?.let { append("  •  ").append(it) }
+                    }
+                } else option.description
                 else -> ""
             }
         }
@@ -82,5 +100,11 @@ class AgentContextCopyDialog(
         }
 
         fun options(): List<AgentContextCopyOption> = options.toList()
+
+        fun setSessionsSelected(selected: Boolean) {
+            options.indices.filter { options[it].type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+                .forEach { index -> options[index] = options[index].copy(selected = selected) }
+            fireTableDataChanged()
+        }
     }
 }
