@@ -95,6 +95,28 @@ class ClaudeCodeContextServiceTest {
     }
 
     @Test
+    fun `copySelectedOptions rewrites session cwd to destination worktree`() = runBlocking {
+        val tempDir = Files.createTempDirectory("claude-session-cwd-test")
+        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
+        val destinationRepo = tempDir.resolve("repo-feature")
+        val claudeHome = tempDir.resolve("claude-home")
+        val sourceSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
+        sourceSessions.resolve("session.jsonl").writeText(
+            """{"type":"user","cwd":"${sourceRepo.toAbsolutePath()}","message":{"content":"hello"}}"""
+        )
+
+        val option = service().detectCopyOptions(sourceRepo, destinationRepo, claudeHome)
+            .single { it.sessionId == "session" }
+            .copy(selected = true)
+        val result = service().copySelectedOptions(listOf(option))
+        val destinationFile = option.destinationPath
+
+        assertEquals(1, result.copiedCount)
+        assertTrue(destinationFile.readText().contains("\"cwd\":\"${destinationRepo.toAbsolutePath()}\""))
+        assertFalse(destinationFile.readText().contains("\"cwd\":\"${sourceRepo.toAbsolutePath()}\""))
+    }
+
+    @Test
     fun `copy failure for one session does not prevent another selected session`() = runBlocking {
         val tempDir = Files.createTempDirectory("claude-session-failure-test")
         val source = tempDir.resolve("source").apply { createDirectories() }

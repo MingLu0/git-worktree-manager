@@ -82,7 +82,9 @@ class ClaudeCodeContextService(private val project: Project) {
                                 sensitive = true,
                                 sessionId = sessionId,
                                 title = title,
-                                lastModified = modified
+                                lastModified = modified,
+                                sourceProjectPath = absoluteSourceRepoPath,
+                                destinationProjectPath = absoluteDestinationWorktreePath
                             )
                         )
                     }
@@ -129,7 +131,7 @@ class ClaudeCodeContextService(private val project: Project) {
             skipped.add(option.displayName to "Destination session file already exists")
         } else {
             runCatching {
-                Files.copy(option.sourcePath, option.destinationPath, StandardCopyOption.COPY_ATTRIBUTES)
+                copySessionFile(option)
                 copied.add(option.displayName)
             }.onFailure { failed.add(option.displayName to (it.message ?: it.javaClass.simpleName)) }
         }
@@ -146,6 +148,42 @@ class ClaudeCodeContextService(private val project: Project) {
             failed += companionResult.failed
         }
         return AgentContextCopyResult(copied, skipped, failed)
+    }
+
+    private fun copySessionFile(option: AgentContextCopyOption) {
+        val sourceProjectPath = option.sourceProjectPath
+        val destinationProjectPath = option.destinationProjectPath
+        if (sourceProjectPath == null || destinationProjectPath == null) {
+            Files.copy(option.sourcePath, option.destinationPath, StandardCopyOption.COPY_ATTRIBUTES)
+            return
+        }
+
+        // Claude filters /resume results using the cwd recorded in the transcript,
+        // not only the slug directory. Rewrite only structured cwd fields so copied
+        // sessions are recognized as belonging to the new worktree.
+        Files.newBufferedReader(option.sourcePath).use { reader ->
+            Files.newBufferedWriter(option.destinationPath).use { writer ->
+                reader.forEachLine { line ->
+                    val rewritten = runCatching {
+                        rewriteCwd(Json.parseToJsonElement(line), sourceProjectPath, destinationProjectPath).toString()
+                    }.getOrNull() ?: line
+                    writer.appendLine(rewritten)
+                }
+            }
+        }
+        Files.setLastModifiedTime(option.destinationPath, Files.getLastModifiedTime(option.sourcePath))
+    }
+
+    private fun rewriteCwd(element: JsonElement, sourceProjectPath: Path, destinationProjectPath: Path): JsonElement = when (element) {
+        is JsonObject -> JsonObject(element.mapValues { (key, value) ->
+            if (key == "cwd" && value is JsonPrimitive && value.contentOrNull == sourceProjectPath.toString()) {
+                JsonPrimitive(destinationProjectPath.toString())
+            } else {
+                rewriteCwd(value, sourceProjectPath, destinationProjectPath)
+            }
+        })
+        is JsonArray -> JsonArray(element.map { rewriteCwd(it, sourceProjectPath, destinationProjectPath) })
+        else -> element
     }
 
     private fun sessionTitle(file: Path, sessionId: String): String {

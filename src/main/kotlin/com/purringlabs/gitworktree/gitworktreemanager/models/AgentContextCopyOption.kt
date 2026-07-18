@@ -14,7 +14,9 @@ data class AgentContextCopyOption(
     val sensitive: Boolean,
     val sessionId: String? = null,
     val title: String? = null,
-    val lastModified: FileTime? = null
+    val lastModified: FileTime? = null,
+    val sourceProjectPath: Path? = null,
+    val destinationProjectPath: Path? = null
 ) {
     enum class Type {
         CLAUDE_PROJECT_CONTEXT,
