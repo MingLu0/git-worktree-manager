@@ -20,11 +20,13 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.nameWithoutExtension
+import kotlin.math.absoluteValue
 
 @Service(Service.Level.PROJECT)
 class ClaudeCodeContextService(private val project: Project) {
@@ -126,19 +128,22 @@ class ClaudeCodeContextService(private val project: Project) {
         val copied = mutableListOf<String>()
         val skipped = mutableListOf<Pair<String, String>>()
         val failed = mutableListOf<Pair<String, String>>()
+        val newSessionId = generateSessionId()
+        val destinationFile = option.destinationPath.parent.resolve("$newSessionId.jsonl")
         Files.createDirectories(option.destinationPath.parent)
-        if (Files.exists(option.destinationPath)) {
+        if (Files.exists(destinationFile)) {
             skipped.add(option.displayName to "Destination session file already exists")
         } else {
             runCatching {
-                copySessionFile(option)
+                copySessionFile(option, newSessionId, destinationFile)
                 copied.add(option.displayName)
             }.onFailure { failed.add(option.displayName to (it.message ?: it.javaClass.simpleName)) }
         }
 
-        val companion = option.sourcePath.parent.resolve(option.sourcePath.nameWithoutExtension)
+        val sourceSessionId = option.sourcePath.nameWithoutExtension
+        val companion = option.sourcePath.parent.resolve(sourceSessionId)
         if (Files.isDirectory(companion)) {
-            val destinationCompanion = option.destinationPath.parent.resolve(companion.fileName.toString())
+            val destinationCompanion = option.destinationPath.parent.resolve(newSessionId)
             val companionResult = copyDirectorySkippingExisting(
                 option.copy(sourcePath = companion, destinationPath = destinationCompanion),
                 exclude = { false }
@@ -150,41 +155,62 @@ class ClaudeCodeContextService(private val project: Project) {
         return AgentContextCopyResult(copied, skipped, failed)
     }
 
-    private fun copySessionFile(option: AgentContextCopyOption) {
+    private fun copySessionFile(option: AgentContextCopyOption, newSessionId: String, destinationFile: Path) {
         val sourceProjectPath = option.sourceProjectPath
         val destinationProjectPath = option.destinationProjectPath
+        val sourceSessionId = option.sessionId
+            ?: option.sourcePath.nameWithoutExtension
+
         if (sourceProjectPath == null || destinationProjectPath == null) {
-            Files.copy(option.sourcePath, option.destinationPath, StandardCopyOption.COPY_ATTRIBUTES)
+            Files.copy(option.sourcePath, destinationFile, StandardCopyOption.COPY_ATTRIBUTES)
             return
         }
 
-        // Claude filters /resume results using the cwd recorded in the transcript,
-        // not only the slug directory. Rewrite only structured cwd fields so copied
-        // sessions are recognized as belonging to the new worktree.
+        // Claude's resume picker aggregates sessions across all worktrees of the repo and
+        // dedupes by sessionId. Keeping the same id lets the original (often newer) file
+        // shadow the copy, so the copied session must get its own id.
         Files.newBufferedReader(option.sourcePath).use { reader ->
-            Files.newBufferedWriter(option.destinationPath).use { writer ->
+            Files.newBufferedWriter(destinationFile).use { writer ->
                 reader.forEachLine { line ->
                     val rewritten = runCatching {
-                        rewriteCwd(Json.parseToJsonElement(line), sourceProjectPath, destinationProjectPath).toString()
+                        rewriteSessionMetadata(
+                            Json.parseToJsonElement(line),
+                            sourceSessionId,
+                            newSessionId,
+                            sourceProjectPath,
+                            destinationProjectPath
+                        ).toString()
                     }.getOrNull() ?: line
                     writer.appendLine(rewritten)
                 }
             }
         }
-        Files.setLastModifiedTime(option.destinationPath, Files.getLastModifiedTime(option.sourcePath))
     }
 
-    private fun rewriteCwd(element: JsonElement, sourceProjectPath: Path, destinationProjectPath: Path): JsonElement = when (element) {
+    private fun rewriteSessionMetadata(
+        element: JsonElement,
+        sourceSessionId: String,
+        newSessionId: String,
+        sourceProjectPath: Path,
+        destinationProjectPath: Path
+    ): JsonElement = when (element) {
         is JsonObject -> JsonObject(element.mapValues { (key, value) ->
-            if (key == "cwd" && value is JsonPrimitive && value.contentOrNull == sourceProjectPath.toString()) {
-                JsonPrimitive(destinationProjectPath.toString())
-            } else {
-                rewriteCwd(value, sourceProjectPath, destinationProjectPath)
+            when {
+                key == "cwd" && value is JsonPrimitive && value.contentOrNull == sourceProjectPath.toString() ->
+                    JsonPrimitive(destinationProjectPath.toString())
+                key == "sessionId" && value is JsonPrimitive && value.contentOrNull == sourceSessionId ->
+                    JsonPrimitive(newSessionId)
+                else ->
+                    rewriteSessionMetadata(value, sourceSessionId, newSessionId, sourceProjectPath, destinationProjectPath)
             }
         })
-        is JsonArray -> JsonArray(element.map { rewriteCwd(it, sourceProjectPath, destinationProjectPath) })
+        is JsonArray -> JsonArray(element.map {
+            rewriteSessionMetadata(it, sourceSessionId, newSessionId, sourceProjectPath, destinationProjectPath)
+        })
         else -> element
     }
+
+    private fun generateSessionId(): String = UUID.randomUUID().toString()
 
     private fun sessionTitle(file: Path, sessionId: String): String {
         val userPrompts = mutableListOf<String>()
@@ -286,6 +312,10 @@ class ClaudeCodeContextService(private val project: Project) {
         }
 
         fun defaultClaudeHome(): Path {
+            val configDir = System.getenv("CLAUDE_CONFIG_DIR")
+            if (!configDir.isNullOrBlank()) {
+                return Path.of(configDir).toAbsolutePath().normalize()
+            }
             return Path.of(System.getProperty("user.home"), ".claude")
         }
 
@@ -300,8 +330,21 @@ class ClaudeCodeContextService(private val project: Project) {
         }
 
         fun claudeProjectKey(projectPath: Path): String {
-            // Claude Code currently keeps the leading separator as a leading '-': /Users/me/repo -> -Users-me-repo.
-            return projectPath.toAbsolutePath().normalize().toString().replace('/', '-').replace('\\', '-')
+            // Claude Code encodes the cwd by replacing every non-alphanumeric character with '-',
+            // truncating to 200 characters, and appending a base36 hash if truncated.
+            // Using toRealPath matches Claude's Sf(cwd) which calls realpath before encoding.
+            val path = runCatching { projectPath.toRealPath() }.getOrDefault(
+                projectPath.toAbsolutePath().normalize()
+            )
+            val pathString = path.toString()
+            val sanitized = pathString.replace(Regex("[^A-Za-z0-9]"), "-")
+            val maxSlugLength = 200
+            if (sanitized.length <= maxSlugLength) {
+                return sanitized
+            }
+            val hash = pathString.hashCode().toLong().absoluteValue
+            val hashSuffix = java.lang.Long.toString(hash, 36)
+            return "${sanitized.take(maxSlugLength)}-$hashSuffix"
         }
 
         fun isPrivateClaudeProjectPath(relativePath: Path): Boolean {
