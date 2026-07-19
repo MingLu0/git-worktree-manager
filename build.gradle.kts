@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.22"
+version = "1.1.23"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>make copied Claude sessions visible in claude resume</li>
+              <li>align copied Claude session titles with Claude Code resume picker</li>
             </ul>
 """.trimIndent()
     }
