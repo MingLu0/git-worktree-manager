@@ -44,8 +44,11 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Copied Claude Code sessions are now recognized in the new worktree so /resume works correctly.</li>
-              <li>Added daily-active-user telemetry to help prioritize future improvements.</li>
+              <li>add anonymous session telemetry tracking</li>
+            </ul>
+            <b>Fixes</b>
+            <ul>
+              <li>Fix copied Claude sessions appearing in /resume</li>
             </ul>
 """.trimIndent()
     }
