@@ -44,7 +44,7 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>align copied Claude session titles with Claude Code resume picker</li>
+              <li>Various stability improvements.</li>
             </ul>
 """.trimIndent()
     }
