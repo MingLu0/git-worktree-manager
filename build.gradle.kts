@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.19"
+version = "1.1.21"
 
 repositories {
     mavenCentral()
@@ -42,9 +42,10 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>Fixes</b>
+            <b>What's new</b>
             <ul>
-              <li>Various stability improvements.</li>
+              <li>Copied Claude Code sessions are now recognized in the new worktree so /resume works correctly.</li>
+              <li>Added daily-active-user telemetry to help prioritize future improvements.</li>
             </ul>
 """.trimIndent()
     }
