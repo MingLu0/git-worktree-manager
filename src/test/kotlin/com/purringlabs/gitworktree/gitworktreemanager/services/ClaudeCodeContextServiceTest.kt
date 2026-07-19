@@ -6,8 +6,11 @@ import kotlinx.coroutines.runBlocking
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.nameWithoutExtension
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -86,34 +89,42 @@ class ClaudeCodeContextServiceTest {
         val unselected = detected.single { it.sessionId == "unselected" }
         val result = service().copySelectedOptions(listOf(selected, unselected))
 
-        assertTrue(destinationSessions.resolve("selected.jsonl").exists())
+        val copiedFile = copiedSessionFile(destinationSessions)
+        val newSessionId = copiedFile.nameWithoutExtension
+        assertTrue(isValidUuid(newSessionId))
+        assertTrue(destinationSessions.resolve(newSessionId).resolve("context.txt").exists())
         assertFalse(destinationSessions.resolve("unselected.jsonl").exists())
         assertEquals("must remain", destinationSessions.resolve("existing.jsonl").readText())
-        assertEquals("must remain", destinationSessions.resolve("selected/context.txt").readText())
+        assertEquals("must remain", destinationSessions.resolve("selected").resolve("context.txt").readText())
+        assertEquals("new companion data", destinationSessions.resolve(newSessionId).resolve("context.txt").readText())
         assertEquals(1, result.copied.count { it == "selected" })
-        assertTrue(result.skipped.any { it.first.contains("context.txt") })
     }
 
     @Test
-    fun `copySelectedOptions rewrites session cwd to destination worktree`() = runBlocking {
+    fun `copySelectedOptions rewrites session cwd and sessionId to destination worktree`() = runBlocking {
         val tempDir = Files.createTempDirectory("claude-session-cwd-test")
         val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
         val destinationRepo = tempDir.resolve("repo-feature")
         val claudeHome = tempDir.resolve("claude-home")
         val sourceSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
         sourceSessions.resolve("session.jsonl").writeText(
-            """{"type":"user","cwd":"${sourceRepo.toAbsolutePath()}","message":{"content":"hello"}}"""
+            """{"type":"user","cwd":"${sourceRepo.toAbsolutePath()}","sessionId":"session","message":{"content":"hello"}}"""
         )
 
         val option = service().detectCopyOptions(sourceRepo, destinationRepo, claudeHome)
             .single { it.sessionId == "session" }
             .copy(selected = true)
         val result = service().copySelectedOptions(listOf(option))
-        val destinationFile = option.destinationPath
+        val destinationFile = copiedSessionFile(option.destinationPath.parent)
+        val newSessionId = destinationFile.nameWithoutExtension
 
         assertEquals(1, result.copiedCount)
-        assertTrue(destinationFile.readText().contains("\"cwd\":\"${destinationRepo.toAbsolutePath()}\""))
-        assertFalse(destinationFile.readText().contains("\"cwd\":\"${sourceRepo.toAbsolutePath()}\""))
+        assertTrue(isValidUuid(newSessionId))
+        val content = destinationFile.readText()
+        assertTrue(content.contains("\"cwd\":\"${destinationRepo.toAbsolutePath()}\""))
+        assertFalse(content.contains("\"cwd\":\"${sourceRepo.toAbsolutePath()}\""))
+        assertTrue(content.contains("\"sessionId\":\"$newSessionId\""))
+        assertFalse(content.contains("\"sessionId\":\"session\""))
     }
 
     @Test
@@ -146,7 +157,7 @@ class ClaudeCodeContextServiceTest {
         )
 
         assertTrue(result.hasFailures)
-        assertEquals("good", destination.resolve("good.jsonl").readText())
+        assertTrue(copiedSessionFile(destination).readText().contains("good"))
         assertTrue(result.copied.any { it == "good" })
     }
 
@@ -182,34 +193,6 @@ class ClaudeCodeContextServiceTest {
         assertFalse(destinationClaude.resolve("settings.local.json").exists())
         assertFalse(destinationClaude.resolve("notes.private.md").exists())
         assertFalse(destinationClaude.resolve("secrets/token.txt").exists())
-    }
-
-    @Test
-    fun `copySelectedOptions skips session history when destination exists`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-session-copy-test")
-        val sourceSession = tempDir.resolve("source-session").apply { createDirectories() }
-        val destinationSession = tempDir.resolve("destination-session").apply { createDirectories() }
-        sourceSession.resolve("conversation.jsonl").writeText("source")
-        destinationSession.resolve("conversation.jsonl").writeText("existing")
-
-        val result = service().copySelectedOptions(
-            listOf(
-                AgentContextCopyOption(
-                    id = "claude-session-history",
-                    displayName = "Claude Code session history",
-                    description = "",
-                    sourcePath = sourceSession,
-                    destinationPath = destinationSession,
-                    type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
-                    selected = true,
-                    sensitive = true
-                )
-            )
-        )
-
-        assertEquals(0, result.copiedCount)
-        assertEquals(1, result.skippedCount)
-        assertEquals("existing", destinationSession.resolve("conversation.jsonl").readText())
     }
 
     @Test
@@ -308,10 +291,27 @@ class ClaudeCodeContextServiceTest {
     }
 
     @Test
-    fun `claudeProjectKey keeps leading absolute path separator as hyphen`() {
-        val key = ClaudeCodeContextService.claudeProjectKey(Path.of("/Users/ming/project"))
+    fun `claudeProjectKey matches Claude Code encoding for leading separator and dots`() {
+        val key = ClaudeCodeContextService.claudeProjectKey(Path.of("/Users/ming/project.v1_test"))
 
-        assertEquals("-Users-ming-project", key)
+        assertEquals("-Users-ming-project-v1-test", key)
+    }
+
+    @Test
+    fun `claudeProjectKey truncates long paths with a base36 hash suffix`() {
+        val longPath = Path.of("/Users/ming/" + "a".repeat(250))
+        val key = ClaudeCodeContextService.claudeProjectKey(longPath)
+
+        assertTrue(key.startsWith("-Users-ming-" + "a".repeat(188) + "-"))
+        assertTrue(key.length > 200)
+        // Suffix after the last dash must be base36 alphanumeric.
+        val suffix = key.substringAfterLast("-")
+        assertTrue(suffix.matches(Regex("^[0-9a-z]+$")))
+    }
+
+    @Test
+    fun `defaultClaudeHome falls back to user home when CLAUDE_CONFIG_DIR is unset`() {
+        assertEquals(Path.of(System.getProperty("user.home"), ".claude"), ClaudeCodeContextService.defaultClaudeHome())
     }
 
     @Test
@@ -323,6 +323,24 @@ class ClaudeCodeContextServiceTest {
 
         assertTrue(path.isAbsolute)
         assertTrue(path.endsWith("projects/${ClaudeCodeContextService.claudeProjectKey(Path.of("relative-repo/../repo"))}"))
+    }
+
+    private fun copiedSessionFile(dir: Path): Path {
+        return Files.list(dir).use { entries ->
+            entries.filter { it.isRegularFile() && it.toString().endsWith(".jsonl") && isValidUuid(it.nameWithoutExtension) }
+                .toList()
+                .singleOrNull()
+                ?: throw AssertionError("Expected exactly one UUID-named .jsonl session file in $dir")
+        }
+    }
+
+    private fun isValidUuid(value: String): Boolean {
+        return try {
+            UUID.fromString(value)
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 
     private fun service(): ClaudeCodeContextService = ClaudeCodeContextService(fakeProject())
