@@ -50,6 +50,21 @@ class ClaudeCodeContextServiceTest {
             """{"type":"summary","summary":"Preferred summary"}
 {"type":"user","message":{"role":"user","content":"A later prompt"}}"""
         )
+        sessions.resolve("ai-title-id.jsonl").writeText(
+            """{"type":"user","message":{"role":"user","content":"First prompt"}}
+{"type":"ai-title","aiTitle":"AI title","timestamp":123}"""
+        )
+        sessions.resolve("last-prompt-id.jsonl").writeText(
+            """{"type":"user","message":{"role":"user","content":"First prompt"}}
+{"type":"last-prompt","lastPrompt":"Last prompt text","timestamp":456}"""
+        )
+        sessions.resolve("priority-id.jsonl").writeText(
+            """{"type":"user","message":{"role":"user","content":"First prompt"}}
+{"type":"last-prompt","lastPrompt":"Last prompt text","timestamp":1}
+{"type":"summary","summary":"Summary text","timestamp":2}
+{"type":"ai-title","aiTitle":"AI title","timestamp":3}
+{"type":"custom-title","customTitle":"Custom Title","timestamp":4}"""
+        )
         sessions.resolve("prompt-id.jsonl").writeText(
             """not json
 {"type":"user","message":{"role":"user","content":[{"type":"text","text":"First meaningful prompt"}]}}"""
@@ -59,8 +74,11 @@ class ClaudeCodeContextServiceTest {
         val options = service().detectCopyOptions(sourceRepo, tempDir.resolve("worktree"), claudeHome)
         val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
 
-        assertEquals(setOf("summary-id", "prompt-id", "empty-id"), sessionOptions.mapNotNull { it.sessionId }.toSet())
+        assertEquals(setOf("summary-id", "ai-title-id", "last-prompt-id", "priority-id", "prompt-id", "empty-id"), sessionOptions.mapNotNull { it.sessionId }.toSet())
         assertEquals("Preferred summary", sessionOptions.single { it.sessionId == "summary-id" }.title)
+        assertEquals("AI title", sessionOptions.single { it.sessionId == "ai-title-id" }.title)
+        assertEquals("Last prompt text", sessionOptions.single { it.sessionId == "last-prompt-id" }.title)
+        assertEquals("Custom Title", sessionOptions.single { it.sessionId == "priority-id" }.title)
         assertEquals("First meaningful prompt", sessionOptions.single { it.sessionId == "prompt-id" }.title)
         assertEquals("empty-id", sessionOptions.single { it.sessionId == "empty-id" }.title)
         assertTrue(sessionOptions.all { !it.selected && it.lastModified != null })

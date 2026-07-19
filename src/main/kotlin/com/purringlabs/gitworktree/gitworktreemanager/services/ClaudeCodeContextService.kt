@@ -213,25 +213,29 @@ class ClaudeCodeContextService(private val project: Project) {
     private fun generateSessionId(): String = UUID.randomUUID().toString()
 
     private fun sessionTitle(file: Path, sessionId: String): String {
-        val userPrompts = mutableListOf<String>()
-        var providedTitle: String? = null
+        var agentName: String? = null
+        var customTitle: String? = null
+        var aiTitle: String? = null
+        var summary: String? = null
+        var lastPrompt: String? = null
+        var firstUserPrompt: String? = null
         runCatching {
             Files.newBufferedReader(file).useLines { lines ->
                 lines.forEach { line ->
                     val element = runCatching { Json.parseToJsonElement(line) }.getOrNull() ?: return@forEach
-                    val obj = element as? JsonObject
-                    val type = obj?.string("type")?.lowercase()
-                    if (type == "summary" || type == "custom-title" || type == "title") {
-                        val candidate = (obj.string("summary") ?: obj.string("title") ?: obj.string("customTitle"))
-                            ?.cleanText()
-                            ?.takeIf { it.isNotEmpty() }
-                        if (providedTitle == null) providedTitle = candidate
+                    val obj = element as? JsonObject ?: return@forEach
+                    obj.string("agentName")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { agentName = it }
+                    obj.string("customTitle")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { customTitle = it }
+                    obj.string("aiTitle")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { aiTitle = it }
+                    obj.string("summary")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { summary = it }
+                    obj.string("lastPrompt")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { lastPrompt = it }
+                    if (firstUserPrompt == null && obj.string("type")?.lowercase() == "user") {
+                        extractUserText(obj)?.cleanText()?.takeIf { it.isNotEmpty() }?.let { firstUserPrompt = it }
                     }
-                    if (type == "user") extractUserText(obj)?.cleanText()?.takeIf { it.isNotEmpty() }?.let(userPrompts::add)
                 }
             }
         }
-        return (providedTitle ?: userPrompts.firstOrNull() ?: sessionId).truncateTitle()
+        return (agentName ?: customTitle ?: aiTitle ?: summary ?: lastPrompt ?: firstUserPrompt ?: sessionId).truncateTitle()
     }
 
     private fun extractUserText(obj: JsonObject?): String? {
