@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.21"
+version = "1.1.22"
 
 repositories {
     mavenCentral()
@@ -42,13 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>What's new</b>
-            <ul>
-              <li>add anonymous session telemetry tracking</li>
-            </ul>
             <b>Fixes</b>
             <ul>
-              <li>Fix copied Claude sessions appearing in /resume</li>
+              <li>make copied Claude sessions visible in claude resume</li>
             </ul>
 """.trimIndent()
     }
