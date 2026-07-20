@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.23"
+version = "1.1.24"
 
 repositories {
     mavenCentral()
@@ -44,7 +44,8 @@ intellijPlatform {
         changeNotes = """
             <b>Fixes</b>
             <ul>
-              <li>Various stability improvements.</li>
+              <li>list Claude Code sessions from all worktrees of the current repo in the copy-session dialog</li>
+              <li>align copied Claude session titles with Claude Code's resume picker</li>
             </ul>
 """.trimIndent()
     }
