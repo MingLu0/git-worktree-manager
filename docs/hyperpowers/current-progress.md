@@ -7,7 +7,7 @@ The original "copy ignored files" feature (designed in `docs/hyperpowers/designs
 
 ### What was built
 
-- **`ClaudeCodeContextService`**: detects `.claude/` project context and `~/.claude/projects/<key>/` session history; copies selected options while excluding private/local files and skipping existing session destinations.
+- **`ClaudeCodeContextService`**: detects `.claude/` project context and Claude session history for known repository worktrees under `~/.claude/projects/<key>/`; copies selected options while excluding private/local files and skipping existing session destinations.
 - **`AgentContextCopyOption`**: model for a copy choice (id, display name, source/destination paths, type, selected flag, sensitive flag).
 - **`AgentContextCopyResult`**: model tracking copied, skipped, and failed items with helper counts.
 - **`AgentContextCopyDialog`**: dialog shown when context options are detected; project context is checked by default, session history is unchecked.
@@ -18,6 +18,7 @@ The original "copy ignored files" feature (designed in `docs/hyperpowers/designs
 ### Key behaviours
 
 - Session history copy is opt-in (unchecked by default) because sessions may contain secrets and local paths.
+- Session history options include sessions from all known worktrees for the repository and identify each session's source worktree.
 - Session history is skipped rather than overwritten if the destination already exists.
 - `.claude/` copy excludes `settings.local.json`, `.env*`, and any path component matching `local`, `private`, `secret`, `secrets`, `token`, `tokens`, `credential`, or `credentials`.
 - Session history copy is skipped on Windows (path encoding differs).

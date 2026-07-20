@@ -86,6 +86,91 @@ class ClaudeCodeContextServiceTest {
     }
 
     @Test
+    fun `detectCopyOptions lists sessions from all provided repo worktrees`() {
+        val tempDir = Files.createTempDirectory("claude-multi-worktree-test")
+        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
+        val otherWorktree = tempDir.resolve("repo-feature")
+        val newWorktree = tempDir.resolve("repo-new")
+        val claudeHome = tempDir.resolve("claude-home")
+
+        val repoSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
+        repoSessions.resolve("main-session.jsonl").writeText(
+            """{"type":"summary","summary":"Main session"}
+{"type":"user","cwd":"${sourceRepo.toAbsolutePath()}","message":{"content":"prompt"}}"""
+        )
+
+        val otherSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, otherWorktree).apply { createDirectories() }
+        otherSessions.resolve("other-session.jsonl").writeText(
+            """{"type":"ai-title","aiTitle":"Other session","cwd":"${otherWorktree.toAbsolutePath()}","timestamp":1}
+{"type":"user","cwd":"${otherWorktree.toAbsolutePath()}","message":{"content":"prompt"}}"""
+        )
+
+        val options = service().detectCopyOptions(
+            sourceRepoPath = sourceRepo,
+            destinationWorktreePath = newWorktree,
+            claudeHome = claudeHome,
+            repoWorktreePaths = listOf(sourceRepo, otherWorktree)
+        )
+        val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+
+        assertEquals(listOf("main-session", "other-session"), sessionOptions.mapNotNull { it.sessionId })
+        assertEquals("Main session", sessionOptions[0].title)
+        assertEquals("Other session", sessionOptions[1].title)
+        assertEquals(sourceRepo.toAbsolutePath().normalize(), sessionOptions[0].sourceProjectPath)
+        assertEquals(otherWorktree.toAbsolutePath().normalize(), sessionOptions[1].sourceProjectPath)
+    }
+
+    @Test
+    fun `detectCopyOptions defaults to source repo sessions only`() {
+        val tempDir = Files.createTempDirectory("claude-default-worktree-test")
+        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
+        val otherWorktree = tempDir.resolve("repo-feature")
+        val newWorktree = tempDir.resolve("repo-new")
+        val claudeHome = tempDir.resolve("claude-home")
+
+        ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
+            .resolve("main-session.jsonl").writeText("""{"type":"summary","summary":"Main"}""")
+        ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, otherWorktree).apply { createDirectories() }
+            .resolve("other-session.jsonl").writeText("""{"type":"summary","summary":"Other"}""")
+
+        val options = service().detectCopyOptions(sourceRepo, newWorktree, claudeHome)
+        val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+
+        assertEquals(setOf("main-session"), sessionOptions.mapNotNull { it.sessionId }.toSet())
+    }
+
+    @Test
+    fun `copySelectedOptions rewrites cwd from cross-worktree session to destination`() = runBlocking {
+        val tempDir = Files.createTempDirectory("claude-cross-worktree-copy-test")
+        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
+        val otherWorktree = tempDir.resolve("repo-feature")
+        val newWorktree = tempDir.resolve("repo-new")
+        val claudeHome = tempDir.resolve("claude-home")
+        val otherSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, otherWorktree).apply { createDirectories() }
+        otherSessions.resolve("session.jsonl").writeText(
+            """{"type":"user","cwd":"${otherWorktree.toAbsolutePath()}","sessionId":"session","message":{"content":"hello"}}"""
+        )
+
+        val option = service().detectCopyOptions(
+            sourceRepoPath = sourceRepo,
+            destinationWorktreePath = newWorktree,
+            claudeHome = claudeHome,
+            repoWorktreePaths = listOf(sourceRepo, otherWorktree)
+        ).single { it.sessionId == "session" }.copy(selected = true)
+        val result = service().copySelectedOptions(listOf(option))
+        val destinationFile = copiedSessionFile(option.destinationPath.parent)
+        val newSessionId = destinationFile.nameWithoutExtension
+
+        assertEquals(1, result.copiedCount)
+        assertTrue(isValidUuid(newSessionId))
+        val content = destinationFile.readText()
+        assertTrue(content.contains("\"cwd\":\"${newWorktree.toAbsolutePath()}\""))
+        assertFalse(content.contains("\"cwd\":\"${otherWorktree.toAbsolutePath()}\""))
+        assertTrue(content.contains("\"sessionId\":\"$newSessionId\""))
+        assertFalse(content.contains("\"sessionId\":\"session\""))
+    }
+
+    @Test
     fun `copySelectedOptions copies selected session and companion while merging destination slug`() = runBlocking {
         val tempDir = Files.createTempDirectory("claude-session-merge-test")
         val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }

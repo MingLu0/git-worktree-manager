@@ -15,9 +15,10 @@ import javax.swing.table.AbstractTableModel
 
 class AgentContextCopyDialog(
     project: Project,
-    options: List<AgentContextCopyOption>
+    options: List<AgentContextCopyOption>,
+    private val sourceRepoPath: java.nio.file.Path? = null
 ) : DialogWrapper(project) {
-    private val tableModel = AgentContextCopyTableModel(options.toMutableList())
+    private val tableModel = AgentContextCopyTableModel(options.toMutableList(), sourceRepoPath)
     private val table = JBTable(tableModel)
 
     init {
@@ -63,7 +64,8 @@ class AgentContextCopyDialog(
     fun selectedOptions(): List<AgentContextCopyOption> = tableModel.options()
 
     private class AgentContextCopyTableModel(
-        private val options: MutableList<AgentContextCopyOption>
+        private val options: MutableList<AgentContextCopyOption>,
+        private val sourceRepoPath: java.nio.file.Path?
     ) : AbstractTableModel() {
         private val columnNames = arrayOf("Copy", "Session / Context", "Details")
 
@@ -84,8 +86,16 @@ class AgentContextCopyDialog(
                 1 -> option.displayName
                 2 -> if (option.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY) {
                     buildString {
+                        option.sourceProjectPath?.let { path ->
+                            val source = sourceRepoPath?.toAbsolutePath()?.normalize()
+                            val current = path.toAbsolutePath().normalize()
+                            append(current.fileName?.toString() ?: current.toString())
+                            if (source != null && current == source) {
+                                append(" (this worktree)")
+                            }
+                            append("  •  ")
+                        }
                         append(option.lastModified?.toString() ?: "Unknown time")
-                        option.sessionId?.let { append("  •  ").append(it) }
                     }
                 } else option.description
                 else -> ""

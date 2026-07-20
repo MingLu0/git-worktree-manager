@@ -179,14 +179,16 @@ private fun WorktreeManagerContent(project: Project) {
 
             val gitWorktreeService = GitWorktreeService.getInstance(project)
             val destinationPath = Paths.get(gitWorktreeService.getWorktreePath(repository, name))
+            val worktreePaths = viewModel.state.worktrees.map { Paths.get(it.path) }
             val detectedOptions = detectAgentContextOptionsInBackground(
                 project = project,
                 service = claudeCodeContextService,
                 sourceRepoPath = Paths.get(repository.root.path),
-                destinationWorktreePath = destinationPath
+                destinationWorktreePath = destinationPath,
+                repoWorktreePaths = worktreePaths
             )
             val selectedAgentContextOptions = if (detectedOptions.isNotEmpty()) {
-                val dialog = AgentContextCopyDialog(project, detectedOptions)
+                val dialog = AgentContextCopyDialog(project, detectedOptions, Paths.get(repository.root.path))
                 if (dialog.showAndGet()) dialog.selectedOptions() else detectedOptions.map { it.copy(selected = false) }
             } else {
                 emptyList()
@@ -663,14 +665,16 @@ private fun detectAgentContextOptionsInBackground(
     project: Project,
     service: ClaudeCodeContextService,
     sourceRepoPath: java.nio.file.Path,
-    destinationWorktreePath: java.nio.file.Path
+    destinationWorktreePath: java.nio.file.Path,
+    repoWorktreePaths: List<java.nio.file.Path>
 ): List<com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption> {
     return try {
         ProgressManager.getInstance().runProcessWithProgressSynchronously(
             ThrowableComputable {
                 service.detectCopyOptions(
                     sourceRepoPath = sourceRepoPath,
-                    destinationWorktreePath = destinationWorktreePath
+                    destinationWorktreePath = destinationWorktreePath,
+                    repoWorktreePaths = repoWorktreePaths
                 )
             },
             "Detecting Claude Code context...",
