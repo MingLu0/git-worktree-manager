@@ -30,18 +30,24 @@ import kotlin.math.absoluteValue
 
 @Service(Service.Level.PROJECT)
 class ClaudeCodeContextService(private val project: Project) {
-    fun detectCopyOptions(sourceRepoPath: Path, destinationWorktreePath: Path): List<AgentContextCopyOption> {
+    fun detectCopyOptions(
+        sourceRepoPath: Path,
+        destinationWorktreePath: Path,
+        repoWorktreePaths: List<Path> = listOf(sourceRepoPath)
+    ): List<AgentContextCopyOption> {
         return detectCopyOptions(
             sourceRepoPath = sourceRepoPath,
             destinationWorktreePath = destinationWorktreePath,
-            claudeHome = defaultClaudeHome()
+            claudeHome = defaultClaudeHome(),
+            repoWorktreePaths = repoWorktreePaths
         )
     }
 
     fun detectCopyOptions(
         sourceRepoPath: Path,
         destinationWorktreePath: Path,
-        claudeHome: Path
+        claudeHome: Path,
+        repoWorktreePaths: List<Path> = listOf(sourceRepoPath)
     ): List<AgentContextCopyOption> {
         val options = mutableListOf<AgentContextCopyOption>()
         val absoluteSourceRepoPath = sourceRepoPath.toAbsolutePath().normalize()
@@ -62,35 +68,51 @@ class ClaudeCodeContextService(private val project: Project) {
             )
         }
 
-        val sourceSessionDir = claudeProjectSessionPath(claudeHome, absoluteSourceRepoPath)
-        if (!isWindows() && sourceSessionDir.exists() && sourceSessionDir.isDirectory()) {
+        val absoluteWorktreePaths = (repoWorktreePaths.map { it.toAbsolutePath().normalize() } + absoluteSourceRepoPath).distinct()
+        val sessionDirPairs = absoluteWorktreePaths
+            .map { worktreePath -> worktreePath to claudeProjectSessionPath(claudeHome, worktreePath) }
+            .filter { (_, sessionDir) -> sessionDir.exists() && sessionDir.isDirectory() }
+            .distinctBy { (_, sessionDir) -> sessionDir.normalize() }
+
+        if (!isWindows() && sessionDirPairs.isNotEmpty()) {
             val destinationSessionDir = claudeProjectSessionPath(claudeHome, absoluteDestinationWorktreePath)
-            Files.list(sourceSessionDir).use { entries ->
-                entries.filter { it.isRegularFile() && it.name.endsWith(".jsonl", ignoreCase = true) }
-                    .sorted(compareByDescending { runCatching { Files.getLastModifiedTime(it) }.getOrNull() })
-                    .forEach { sessionFile ->
-                        val sessionId = sessionFile.nameWithoutExtension
-                        val title = sessionTitle(sessionFile, sessionId)
-                        val modified = runCatching { Files.getLastModifiedTime(sessionFile) }.getOrNull()
-                        options.add(
-                            AgentContextCopyOption(
-                                id = "claude-session-$sessionId",
-                                displayName = title,
-                                description = "Session $sessionId — may include prompts, code snippets, secrets, and local paths.",
-                                sourcePath = sessionFile.normalize(),
-                                destinationPath = destinationSessionDir.resolve(sessionFile.fileName).normalize(),
-                                type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
-                                selected = false,
-                                sensitive = true,
-                                sessionId = sessionId,
-                                title = title,
-                                lastModified = modified,
-                                sourceProjectPath = absoluteSourceRepoPath,
-                                destinationProjectPath = absoluteDestinationWorktreePath
-                            )
-                        )
-                    }
-            }
+            val sessionFiles = sessionDirPairs.flatMap { (_, sessionDir) ->
+                Files.list(sessionDir).use { entries ->
+                    entries.filter { it.isRegularFile() && it.name.endsWith(".jsonl", ignoreCase = true) }
+                        .toList()
+                }
+            }.distinctBy { it.normalize() }
+
+            sessionFiles.mapNotNull { sessionFile ->
+                val sessionId = sessionFile.nameWithoutExtension
+                if (sessionId.isBlank()) return@mapNotNull null
+                val metadata = sessionMetadata(sessionFile, sessionId)
+                val modified = runCatching { Files.getLastModifiedTime(sessionFile) }.getOrNull()
+                val dirWorktreePath = sessionDirPairs.firstOrNull { (_, sessionDir) ->
+                    sessionFile.startsWith(sessionDir)
+                }?.first
+                val sourceProjectPath = metadata.cwd?.let { cwd ->
+                    runCatching { Path.of(cwd).toAbsolutePath().normalize() }.getOrNull()
+                } ?: dirWorktreePath ?: absoluteSourceRepoPath
+                AgentContextCopyOption(
+                    id = "claude-session-$sessionId",
+                    displayName = metadata.title,
+                    description = "Session $sessionId — may include prompts, code snippets, secrets, and local paths.",
+                    sourcePath = sessionFile.normalize(),
+                    destinationPath = destinationSessionDir.resolve(sessionFile.fileName).normalize(),
+                    type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
+                    selected = false,
+                    sensitive = true,
+                    sessionId = sessionId,
+                    title = metadata.title,
+                    lastModified = modified,
+                    sourceProjectPath = sourceProjectPath,
+                    destinationProjectPath = absoluteDestinationWorktreePath
+                )
+            }.sortedWith(
+                compareByDescending<AgentContextCopyOption> { it.sourceProjectPath == absoluteSourceRepoPath }
+                    .thenByDescending { it.lastModified?.toMillis() ?: Long.MIN_VALUE }
+            ).forEach { options.add(it) }
         }
 
         return options
@@ -212,13 +234,14 @@ class ClaudeCodeContextService(private val project: Project) {
 
     private fun generateSessionId(): String = UUID.randomUUID().toString()
 
-    private fun sessionTitle(file: Path, sessionId: String): String {
+    private fun sessionMetadata(file: Path, sessionId: String): SessionMetadata {
         var agentName: String? = null
         var customTitle: String? = null
         var aiTitle: String? = null
         var summary: String? = null
         var lastPrompt: String? = null
         var firstUserPrompt: String? = null
+        var cwd: String? = null
         runCatching {
             Files.newBufferedReader(file).useLines { lines ->
                 lines.forEach { line ->
@@ -229,14 +252,18 @@ class ClaudeCodeContextService(private val project: Project) {
                     obj.string("aiTitle")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { aiTitle = it }
                     obj.string("summary")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { summary = it }
                     obj.string("lastPrompt")?.cleanText()?.takeIf { it.isNotEmpty() }?.let { lastPrompt = it }
+                    if (cwd == null) obj.string("cwd")?.takeIf { it.isNotEmpty() }?.let { cwd = it }
                     if (firstUserPrompt == null && obj.string("type")?.lowercase() == "user") {
                         extractUserText(obj)?.cleanText()?.takeIf { it.isNotEmpty() }?.let { firstUserPrompt = it }
                     }
                 }
             }
         }
-        return (agentName ?: customTitle ?: aiTitle ?: summary ?: lastPrompt ?: firstUserPrompt ?: sessionId).truncateTitle()
+        val title = (agentName ?: customTitle ?: aiTitle ?: summary ?: lastPrompt ?: firstUserPrompt ?: sessionId).truncateTitle()
+        return SessionMetadata(title, cwd)
     }
+
+    private data class SessionMetadata(val title: String, val cwd: String?)
 
     private fun extractUserText(obj: JsonObject?): String? {
         val message = obj?.get("message")
