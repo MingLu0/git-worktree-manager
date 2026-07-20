@@ -51,14 +51,14 @@ https://plugins.jetbrains.com/plugin/29905-git-worktree-manager?noRedirect=true
 3. Enter a branch name (e.g., "feature/auth")
 4. If Claude Code context is detected, choose what to copy:
    - **Claude Code project context (`.claude/`)**: selected by default when present. Local/private files are excluded.
-   - **Claude Code session history**: unchecked by default because sessions may include prompts, code snippets, secrets, and local paths.
+   - **Claude Code session history**: unchecked by default because sessions may include prompts, code snippets, secrets, and local paths. Sessions from all known worktrees for the repository are listed with their source worktree.
 5. The plugin will:
    - Create the worktree in the parent directory (e.g., `../myproject-feature-auth`)
    - Create a new branch
    - Copy selected Claude Code context (if requested)
    - Automatically open the worktree in a new IDE window
 
-**Note**: Claude Code session history is copied into Claude's user data for the new worktree path. After opening the new worktree, users can resume copied sessions from Claude Code's resume/session picker, or with `claude --resume` from the new worktree.
+**Note**: Claude Code session history is copied into Claude's user data for the new worktree path, with session paths rewritten for that destination. After opening the new worktree, users can resume copied sessions from Claude Code's resume/session picker, or with `claude --resume` from the new worktree.
 
 The `.claude/` copy excludes local/private files by default, including `settings.local.json`, `.env*`, and files or folders containing `local`, `private`, `secret`, `secrets`, `tokens`, or `credentials` patterns.
 

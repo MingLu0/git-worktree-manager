@@ -22,13 +22,14 @@
 
 ## Session history opt-in
 
-1. Use a repo that has Claude Code session history under `~/.claude/projects/`.
+1. Use a repo with Claude Code session history under `~/.claude/projects/` for the current worktree and at least one other known worktree.
 2. Click `Create Worktree`.
 3. Verify `Claude Code session history` appears unchecked by default.
-4. Check it explicitly.
-5. Create the worktree.
-6. Open a terminal in the new worktree and run `claude --resume`.
-7. Verify copied sessions are available for the new worktree path.
+4. Verify session rows identify their source worktree.
+5. Check session history explicitly.
+6. Create the worktree.
+7. Open a terminal in the new worktree and run `claude --resume`.
+8. Verify copied sessions from each selected source worktree are available for the new worktree path.
 
 ## Existing destination session history
 
