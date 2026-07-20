@@ -42,10 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>Fixes</b>
+            <b>What's new</b>
             <ul>
-              <li>list Claude Code sessions from all worktrees of the current repo in the copy-session dialog</li>
-              <li>align copied Claude session titles with Claude Code's resume picker</li>
+              <li>list Claude sessions across worktrees</li>
             </ul>
 """.trimIndent()
     }
