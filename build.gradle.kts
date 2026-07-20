@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.23"
+version = "1.1.24"
 
 repositories {
     mavenCentral()
@@ -42,9 +42,9 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <b>Fixes</b>
+            <b>What's new</b>
             <ul>
-              <li>Various stability improvements.</li>
+              <li>list Claude sessions across worktrees</li>
             </ul>
 """.trimIndent()
     }
