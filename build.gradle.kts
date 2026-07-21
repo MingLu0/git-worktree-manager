@@ -45,7 +45,8 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Resume Claude Code sessions across worktrees with one click</li>
+              <li>resume Claude Code sessions natively</li>
+              <li>add AGENTS.md with CLAUDE.md symlink</li>
             </ul>
 """.trimIndent()
     }
