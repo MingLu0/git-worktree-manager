@@ -1,48 +1,20 @@
 package com.purringlabs.gitworktree.gitworktreemanager.services
 
 import com.intellij.openapi.project.Project
-import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption
-import kotlinx.coroutines.runBlocking
+import com.purringlabs.gitworktree.gitworktreemanager.models.ClaudeSessionInfo
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 import kotlin.io.path.createDirectories
-import kotlin.io.path.exists
-import kotlin.io.path.isRegularFile
-import kotlin.io.path.nameWithoutExtension
-import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ClaudeCodeContextServiceTest {
     @Test
-    fun `detectCopyOptions selects project context and leaves session history unchecked`() {
-        val tempDir = Files.createTempDirectory("claude-context-test")
-        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
-        val destinationWorktree = tempDir.resolve("repo-feature")
-        val claudeHome = tempDir.resolve("claude-home")
-        sourceRepo.resolve(".claude").createDirectories()
-        ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply {
-            createDirectories()
-            resolve("session.jsonl").writeText("{\"type\":\"user\",\"message\":{\"content\":\"hello\"}}")
-        }
-
-        val options = service().detectCopyOptions(sourceRepo, destinationWorktree, claudeHome)
-
-        val projectContext = options.single { it.type == AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT }
-        val sessionHistory = options.single { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
-        assertTrue(projectContext.selected)
-        assertFalse(sessionHistory.selected)
-        assertTrue(sessionHistory.sensitive)
-    }
-
-    @Test
-    fun `detectCopyOptions creates one unchecked option per session with readable metadata`() {
-        val tempDir = Files.createTempDirectory("claude-session-detection-test")
+    fun `listSessions returns one item per session with readable metadata`() {
+        val tempDir = Files.createTempDirectory("claude-session-list-test")
         val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
         val claudeHome = tempDir.resolve("claude-home")
         val sessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
@@ -71,26 +43,28 @@ class ClaudeCodeContextServiceTest {
         )
         sessions.resolve("empty-id.jsonl").writeText("{malformed}\n")
 
-        val options = service().detectCopyOptions(sourceRepo, tempDir.resolve("worktree"), claudeHome)
-        val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+        val result = service().listSessions(claudeHome, sourceRepo, listOf(sourceRepo))
 
-        assertEquals(setOf("summary-id", "ai-title-id", "last-prompt-id", "priority-id", "prompt-id", "empty-id"), sessionOptions.mapNotNull { it.sessionId }.toSet())
-        assertEquals("Preferred summary", sessionOptions.single { it.sessionId == "summary-id" }.title)
-        assertEquals("AI title", sessionOptions.single { it.sessionId == "ai-title-id" }.title)
-        assertEquals("Last prompt text", sessionOptions.single { it.sessionId == "last-prompt-id" }.title)
-        assertEquals("Custom Title", sessionOptions.single { it.sessionId == "priority-id" }.title)
-        assertEquals("First meaningful prompt", sessionOptions.single { it.sessionId == "prompt-id" }.title)
-        assertEquals("empty-id", sessionOptions.single { it.sessionId == "empty-id" }.title)
-        assertTrue(sessionOptions.all { !it.selected && it.lastModified != null })
-        assertTrue(sessionOptions.all { it.sourcePath.isAbsolute && it.destinationPath.isAbsolute })
+        assertEquals(
+            setOf("summary-id", "ai-title-id", "last-prompt-id", "priority-id", "prompt-id", "empty-id"),
+            result.map { it.sessionId }.toSet()
+        )
+        assertEquals("Preferred summary", result.single { it.sessionId == "summary-id" }.title)
+        assertEquals("AI title", result.single { it.sessionId == "ai-title-id" }.title)
+        assertEquals("Last prompt text", result.single { it.sessionId == "last-prompt-id" }.title)
+        assertEquals("Custom Title", result.single { it.sessionId == "priority-id" }.title)
+        assertEquals("First meaningful prompt", result.single { it.sessionId == "prompt-id" }.title)
+        assertEquals("empty-id", result.single { it.sessionId == "empty-id" }.title)
+        assertTrue(result.all { it.lastModified != null })
+        assertTrue(result.all { it.sourceProjectPath.isAbsolute })
+        assertTrue(result.all { it.sessionFile.isAbsolute })
     }
 
     @Test
-    fun `detectCopyOptions lists sessions from all provided repo worktrees`() {
+    fun `listSessions lists sessions from all provided repo worktrees`() {
         val tempDir = Files.createTempDirectory("claude-multi-worktree-test")
         val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
         val otherWorktree = tempDir.resolve("repo-feature")
-        val newWorktree = tempDir.resolve("repo-new")
         val claudeHome = tempDir.resolve("claude-home")
 
         val repoSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
@@ -105,27 +79,24 @@ class ClaudeCodeContextServiceTest {
 {"type":"user","cwd":"${otherWorktree.toAbsolutePath()}","message":{"content":"prompt"}}"""
         )
 
-        val options = service().detectCopyOptions(
-            sourceRepoPath = sourceRepo,
-            destinationWorktreePath = newWorktree,
-            claudeHome = claudeHome,
-            repoWorktreePaths = listOf(sourceRepo, otherWorktree)
+        val result = service().listSessions(
+            currentProjectPath = sourceRepo,
+            repoWorktreePaths = listOf(sourceRepo, otherWorktree),
+            claudeHome = claudeHome
         )
-        val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
 
-        assertEquals(listOf("main-session", "other-session"), sessionOptions.mapNotNull { it.sessionId })
-        assertEquals("Main session", sessionOptions[0].title)
-        assertEquals("Other session", sessionOptions[1].title)
-        assertEquals(sourceRepo.toAbsolutePath().normalize(), sessionOptions[0].sourceProjectPath)
-        assertEquals(otherWorktree.toAbsolutePath().normalize(), sessionOptions[1].sourceProjectPath)
+        assertEquals(listOf("main-session", "other-session"), result.map { it.sessionId })
+        assertEquals("Main session", result[0].title)
+        assertEquals("Other session", result[1].title)
+        assertEquals(sourceRepo.toAbsolutePath().normalize(), result[0].sourceProjectPath)
+        assertEquals(otherWorktree.toAbsolutePath().normalize(), result[1].sourceProjectPath)
     }
 
     @Test
-    fun `detectCopyOptions defaults to source repo sessions only`() {
+    fun `listSessions defaults to current worktree sessions only`() {
         val tempDir = Files.createTempDirectory("claude-default-worktree-test")
         val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
         val otherWorktree = tempDir.resolve("repo-feature")
-        val newWorktree = tempDir.resolve("repo-new")
         val claudeHome = tempDir.resolve("claude-home")
 
         ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
@@ -133,264 +104,9 @@ class ClaudeCodeContextServiceTest {
         ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, otherWorktree).apply { createDirectories() }
             .resolve("other-session.jsonl").writeText("""{"type":"summary","summary":"Other"}""")
 
-        val options = service().detectCopyOptions(sourceRepo, newWorktree, claudeHome)
-        val sessionOptions = options.filter { it.type == AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY }
+        val result = service().listSessions(claudeHome, sourceRepo, listOf(sourceRepo))
 
-        assertEquals(setOf("main-session"), sessionOptions.mapNotNull { it.sessionId }.toSet())
-    }
-
-    @Test
-    fun `copySelectedOptions rewrites cwd from cross-worktree session to destination`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-cross-worktree-copy-test")
-        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
-        val otherWorktree = tempDir.resolve("repo-feature")
-        val newWorktree = tempDir.resolve("repo-new")
-        val claudeHome = tempDir.resolve("claude-home")
-        val otherSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, otherWorktree).apply { createDirectories() }
-        otherSessions.resolve("session.jsonl").writeText(
-            """{"type":"user","cwd":"${otherWorktree.toAbsolutePath()}","sessionId":"session","message":{"content":"hello"}}"""
-        )
-
-        val option = service().detectCopyOptions(
-            sourceRepoPath = sourceRepo,
-            destinationWorktreePath = newWorktree,
-            claudeHome = claudeHome,
-            repoWorktreePaths = listOf(sourceRepo, otherWorktree)
-        ).single { it.sessionId == "session" }.copy(selected = true)
-        val result = service().copySelectedOptions(listOf(option))
-        val destinationFile = copiedSessionFile(option.destinationPath.parent)
-        val newSessionId = destinationFile.nameWithoutExtension
-
-        assertEquals(1, result.copiedCount)
-        assertTrue(isValidUuid(newSessionId))
-        val content = destinationFile.readText()
-        assertTrue(content.contains("\"cwd\":\"${newWorktree.toAbsolutePath()}\""))
-        assertFalse(content.contains("\"cwd\":\"${otherWorktree.toAbsolutePath()}\""))
-        assertTrue(content.contains("\"sessionId\":\"$newSessionId\""))
-        assertFalse(content.contains("\"sessionId\":\"session\""))
-    }
-
-    @Test
-    fun `copySelectedOptions copies selected session and companion while merging destination slug`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-session-merge-test")
-        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
-        val destinationRepo = tempDir.resolve("repo-feature")
-        val claudeHome = tempDir.resolve("claude-home")
-        val sourceSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
-        val destinationSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, destinationRepo).apply { createDirectories() }
-
-        sourceSessions.resolve("selected.jsonl").writeText("selected")
-        sourceSessions.resolve("unselected.jsonl").writeText("unselected")
-        sourceSessions.resolve("selected").createDirectories()
-        sourceSessions.resolve("selected/context.txt").writeText("new companion data")
-        destinationSessions.resolve("existing.jsonl").writeText("must remain")
-        destinationSessions.resolve("selected").createDirectories()
-        destinationSessions.resolve("selected/context.txt").writeText("must remain")
-
-        val detected = service().detectCopyOptions(sourceRepo, destinationRepo, claudeHome)
-        val selected = detected.single { it.sessionId == "selected" }.copy(selected = true)
-        val unselected = detected.single { it.sessionId == "unselected" }
-        val result = service().copySelectedOptions(listOf(selected, unselected))
-
-        val copiedFile = copiedSessionFile(destinationSessions)
-        val newSessionId = copiedFile.nameWithoutExtension
-        assertTrue(isValidUuid(newSessionId))
-        assertTrue(destinationSessions.resolve(newSessionId).resolve("context.txt").exists())
-        assertFalse(destinationSessions.resolve("unselected.jsonl").exists())
-        assertEquals("must remain", destinationSessions.resolve("existing.jsonl").readText())
-        assertEquals("must remain", destinationSessions.resolve("selected").resolve("context.txt").readText())
-        assertEquals("new companion data", destinationSessions.resolve(newSessionId).resolve("context.txt").readText())
-        assertEquals(1, result.copied.count { it == "selected" })
-    }
-
-    @Test
-    fun `copySelectedOptions rewrites session cwd and sessionId to destination worktree`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-session-cwd-test")
-        val sourceRepo = tempDir.resolve("repo").apply { createDirectories() }
-        val destinationRepo = tempDir.resolve("repo-feature")
-        val claudeHome = tempDir.resolve("claude-home")
-        val sourceSessions = ClaudeCodeContextService.claudeProjectSessionPath(claudeHome, sourceRepo).apply { createDirectories() }
-        sourceSessions.resolve("session.jsonl").writeText(
-            """{"type":"user","cwd":"${sourceRepo.toAbsolutePath()}","sessionId":"session","message":{"content":"hello"}}"""
-        )
-
-        val option = service().detectCopyOptions(sourceRepo, destinationRepo, claudeHome)
-            .single { it.sessionId == "session" }
-            .copy(selected = true)
-        val result = service().copySelectedOptions(listOf(option))
-        val destinationFile = copiedSessionFile(option.destinationPath.parent)
-        val newSessionId = destinationFile.nameWithoutExtension
-
-        assertEquals(1, result.copiedCount)
-        assertTrue(isValidUuid(newSessionId))
-        val content = destinationFile.readText()
-        assertTrue(content.contains("\"cwd\":\"${destinationRepo.toAbsolutePath()}\""))
-        assertFalse(content.contains("\"cwd\":\"${sourceRepo.toAbsolutePath()}\""))
-        assertTrue(content.contains("\"sessionId\":\"$newSessionId\""))
-        assertFalse(content.contains("\"sessionId\":\"session\""))
-    }
-
-    @Test
-    fun `copy failure for one session does not prevent another selected session`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-session-failure-test")
-        val source = tempDir.resolve("source").apply { createDirectories() }
-        val destination = tempDir.resolve("destination").apply { createDirectories() }
-        val goodSource = source.resolve("good.jsonl").apply { writeText("good") }
-        val badSource = source.resolve("bad.jsonl").apply { writeText("bad") }
-        val blockedParent = destination.resolve("blocked").apply { writeText("not a directory") }
-
-        fun option(id: String, sourcePath: Path, destinationPath: Path) = AgentContextCopyOption(
-            id = "claude-session-$id",
-            displayName = id,
-            description = "",
-            sourcePath = sourcePath,
-            destinationPath = destinationPath,
-            type = AgentContextCopyOption.Type.CLAUDE_SESSION_HISTORY,
-            selected = true,
-            sensitive = true,
-            sessionId = id,
-            title = id
-        )
-
-        val result = service().copySelectedOptions(
-            listOf(
-                option("bad", badSource, blockedParent.resolve("bad.jsonl")),
-                option("good", goodSource, destination.resolve("good.jsonl"))
-            )
-        )
-
-        assertTrue(result.hasFailures)
-        assertTrue(copiedSessionFile(destination).readText().contains("good"))
-        assertTrue(result.copied.any { it == "good" })
-    }
-
-    @Test
-    fun `copySelectedOptions excludes local and private Claude project files`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-context-copy-test")
-        val sourceClaude = tempDir.resolve("repo/.claude").apply { createDirectories() }
-        val destinationClaude = tempDir.resolve("repo-feature/.claude")
-        sourceClaude.resolve("commands").createDirectories()
-        sourceClaude.resolve("commands/shared.md").writeText("shared")
-        sourceClaude.resolve("settings.local.json").writeText("local")
-        sourceClaude.resolve("notes.private.md").writeText("private")
-        sourceClaude.resolve("secrets").createDirectories()
-        sourceClaude.resolve("secrets/token.txt").writeText("token")
-
-        val result = service().copySelectedOptions(
-            listOf(
-                AgentContextCopyOption(
-                    id = "claude-project-context",
-                    displayName = "Claude Code project context (.claude/)",
-                    description = "",
-                    sourcePath = sourceClaude,
-                    destinationPath = destinationClaude,
-                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
-                    selected = true,
-                    sensitive = false
-                )
-            )
-        )
-
-        assertEquals(1, result.copiedCount)
-        assertEquals("shared", destinationClaude.resolve("commands/shared.md").readText())
-        assertFalse(destinationClaude.resolve("settings.local.json").exists())
-        assertFalse(destinationClaude.resolve("notes.private.md").exists())
-        assertFalse(destinationClaude.resolve("secrets/token.txt").exists())
-    }
-
-    @Test
-    fun `copySelectedOptions returns empty result when all options are unselected`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-unselected-test")
-        val sourceClaude = tempDir.resolve("repo/.claude").apply { createDirectories() }
-        val destinationClaude = tempDir.resolve("repo-feature/.claude")
-        sourceClaude.resolve("commands").createDirectories()
-        sourceClaude.resolve("commands/review.md").writeText("source")
-
-        val result = service().copySelectedOptions(
-            listOf(
-                AgentContextCopyOption(
-                    id = "claude-project-context",
-                    displayName = "Claude Code project context (.claude/)",
-                    description = "",
-                    sourcePath = sourceClaude,
-                    destinationPath = destinationClaude,
-                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
-                    selected = false,
-                    sensitive = false
-                )
-            )
-        )
-
-        assertFalse(result.hasEntries)
-        assertFalse(destinationClaude.exists())
-    }
-
-    @Test
-    fun `copySelectedOptions skips option when source no longer exists`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-missing-source-test")
-        val missingSource = tempDir.resolve("missing/.claude")
-
-        val result = service().copySelectedOptions(
-            listOf(
-                AgentContextCopyOption(
-                    id = "claude-project-context",
-                    displayName = "Claude Code project context (.claude/)",
-                    description = "",
-                    sourcePath = missingSource,
-                    destinationPath = tempDir.resolve("repo-feature/.claude"),
-                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
-                    selected = true,
-                    sensitive = false
-                )
-            )
-        )
-
-        assertEquals(0, result.copiedCount)
-        assertEquals(1, result.skippedCount)
-    }
-
-    @Test
-    fun `copySelectedOptions skips existing Claude project context files`() = runBlocking {
-        val tempDir = Files.createTempDirectory("claude-existing-context-test")
-        val sourceClaude = tempDir.resolve("repo/.claude").apply { createDirectories() }
-        val destinationClaude = tempDir.resolve("repo-feature/.claude").apply { createDirectories() }
-        sourceClaude.resolve("commands").createDirectories()
-        destinationClaude.resolve("commands").createDirectories()
-        sourceClaude.resolve("commands/review.md").writeText("source")
-        destinationClaude.resolve("commands/review.md").writeText("existing")
-
-        val result = service().copySelectedOptions(
-            listOf(
-                AgentContextCopyOption(
-                    id = "claude-project-context",
-                    displayName = "Claude Code project context (.claude/)",
-                    description = "",
-                    sourcePath = sourceClaude,
-                    destinationPath = destinationClaude,
-                    type = AgentContextCopyOption.Type.CLAUDE_PROJECT_CONTEXT,
-                    selected = true,
-                    sensitive = false
-                )
-            )
-        )
-
-        assertEquals(0, result.copiedCount)
-        assertEquals(1, result.skippedCount)
-        assertEquals("existing", destinationClaude.resolve("commands/review.md").readText())
-    }
-
-    @Test
-    fun `private Claude path matcher excludes expected names`() {
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("settings.local.json")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("foo.secret.json")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("secrets", "token.txt")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("my-secrets", "value.txt")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("api-credentials", "value.txt")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of(".env", "token.txt")))
-        assertTrue(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of(".env.local")))
-        assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("commands", "review.md")))
-        assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("commands", "tokenize.md")))
-        assertFalse(ClaudeCodeContextService.isPrivateClaudeProjectPath(Path.of("authenticate-locally.md")))
+        assertEquals(setOf("main-session"), result.map { it.sessionId }.toSet())
     }
 
     @Test
@@ -426,24 +142,6 @@ class ClaudeCodeContextServiceTest {
 
         assertTrue(path.isAbsolute)
         assertTrue(path.endsWith("projects/${ClaudeCodeContextService.claudeProjectKey(Path.of("relative-repo/../repo"))}"))
-    }
-
-    private fun copiedSessionFile(dir: Path): Path {
-        return Files.list(dir).use { entries ->
-            entries.filter { it.isRegularFile() && it.toString().endsWith(".jsonl") && isValidUuid(it.nameWithoutExtension) }
-                .toList()
-                .singleOrNull()
-                ?: throw AssertionError("Expected exactly one UUID-named .jsonl session file in $dir")
-        }
-    }
-
-    private fun isValidUuid(value: String): Boolean {
-        return try {
-            UUID.fromString(value)
-            true
-        } catch (_: IllegalArgumentException) {
-            false
-        }
     }
 
     private fun service(): ClaudeCodeContextService = ClaudeCodeContextService(fakeProject())

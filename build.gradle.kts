@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.24"
+version = "1.1.25"
 
 repositories {
     mavenCentral()
@@ -28,6 +28,7 @@ dependencies {
 
         bundledPlugin("org.jetbrains.kotlin")
         bundledPlugin("Git4Idea")
+        bundledPlugin("org.jetbrains.plugins.terminal")
     }
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
@@ -44,7 +45,7 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>list Claude sessions across worktrees</li>
+              <li>Resume Claude Code sessions across worktrees via native fork-and-resume</li>
             </ul>
 """.trimIndent()
     }

@@ -1,6 +1,6 @@
 # Git Worktree Manager — Agent Instructions
 
-JetBrains plugin for managing Git worktrees, with Claude Code context copying.
+JetBrains plugin for managing Git worktrees, with Claude Code session resume.
 
 ## Build & Test
 
