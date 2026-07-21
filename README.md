@@ -6,7 +6,7 @@ A powerful IntelliJ IDEA/Android Studio plugin that simplifies Git worktree mana
 
 - **List Worktrees**: View all worktrees in your repository with their branch names, paths, and commit information
 - **Create Worktrees**: Create new worktrees with a simple dialog interface
-- **Copy Claude Code Context**: Optionally copy safe Claude Code project context and, when explicitly selected, session history to new worktrees
+- **Resume Claude Code Sessions**: View and resume Claude Code sessions across all repository worktrees
 - **Auto-Open in New Window**: Automatically opens newly created worktrees in a separate IDE window
 - **Delete Worktrees**: Remove worktrees with one click (with confirmation dialog)
 - **Modern UI**: Built with Jetpack Compose for a native, responsive user experience
@@ -49,18 +49,19 @@ https://plugins.jetbrains.com/plugin/29905-git-worktree-manager?noRedirect=true
 1. Click the "Create Worktree" button
 2. Enter a name for the worktree (e.g., "feature-auth")
 3. Enter a branch name (e.g., "feature/auth")
-4. If Claude Code context is detected, choose what to copy:
-   - **Claude Code project context (`.claude/`)**: selected by default when present. Local/private files are excluded.
-   - **Claude Code session history**: unchecked by default because sessions may include prompts, code snippets, secrets, and local paths. Sessions from all known worktrees for the repository are listed with their source worktree.
-5. The plugin will:
+4. The plugin will:
    - Create the worktree in the parent directory (e.g., `../myproject-feature-auth`)
    - Create a new branch
-   - Copy selected Claude Code context (if requested)
    - Automatically open the worktree in a new IDE window
 
-**Note**: Claude Code session history is copied into Claude's user data for the new worktree path, with session paths rewritten for that destination. After opening the new worktree, users can resume copied sessions from Claude Code's resume/session picker, or with `claude --resume` from the new worktree.
+### Resuming Claude Code Sessions
 
-The `.claude/` copy excludes local/private files by default, including `settings.local.json`, `.env*`, and files or folders containing `local`, `private`, `secret`, `secrets`, `tokens`, or `credentials` patterns.
+1. Expand the `Claude Sessions` section in the tool window
+2. Find a session from the current project or another repository worktree
+3. Click `Resume`
+4. The plugin opens a terminal and runs `claude --resume <session-id> --fork-session`
+
+Claude sessions are discovered from Claude Code's user data for the known repository worktrees. Session resume is unavailable on Windows because Claude Code's project-path encoding differs there.
 
 ### Deleting a Worktree
 
@@ -109,12 +110,12 @@ Platform Services (GitWorktreeService)
 
 ### Components
 
-- **WorktreeState**: Immutable data class representing UI state (worktrees list, loading state, errors, agent context copy results)
+- **WorktreeState**: Immutable data class representing UI state (worktrees list, Claude sessions, loading state, errors)
 - **WorktreeRepository**: Data access layer that wraps GitWorktreeService and handles Git repository operations
 - **WorktreeViewModel**: Presentation logic layer that manages state and coordinates between Repository and UI (uses constructor dependency injection)
-- **ClaudeCodeContextService**: Project-level service for detecting and copying Claude Code project context and optional session history
+- **ClaudeCodeContextService**: Project-level service for listing Claude Code sessions across known repository worktrees
 - **Pure Composables**: UI components with no dependencies on IntelliJ Platform APIs, making them testable and maintainable
-- **DialogWrapper Dialogs**: Native IntelliJ dialogs for context selection and copy results
+- **DialogWrapper Dialogs**: Native IntelliJ dialogs for error details and remote branch selection
 
 ### Design Principles
 

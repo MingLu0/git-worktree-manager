@@ -1,25 +1,21 @@
 ## Current Feature Status
 
-**Feature:** Copy Claude Code Context to new worktrees
+**Feature:** Native Claude Code Session Resume
 **Status:** ✅ Complete
 
-The original "copy ignored files" feature (designed in `docs/hyperpowers/designs/2026-01-30-copy-ignored-files-design.md`) was replaced by a focused Claude Code context copy feature. The old `IgnoredFilesService`, `FileOperationsService`, `CopyResult`, `IgnoredFileInfo`, `IgnoredFilesSelectionDialog`, and `CopyResultDialog` classes were removed.
+The earlier Claude Code context-copy flow was replaced by native Claude Code session discovery and forked resume. The removed copy flow no longer copies `.claude/` project context or session history into new worktrees.
 
 ### What was built
 
-- **`ClaudeCodeContextService`**: detects `.claude/` project context and Claude session history for known repository worktrees under `~/.claude/projects/<key>/`; copies selected options while excluding private/local files and skipping existing session destinations.
-- **`AgentContextCopyOption`**: model for a copy choice (id, display name, source/destination paths, type, selected flag, sensitive flag).
-- **`AgentContextCopyResult`**: model tracking copied, skipped, and failed items with helper counts.
-- **`AgentContextCopyDialog`**: dialog shown when context options are detected; project context is checked by default, session history is unchecked.
-- **`AgentContextCopyResultDialog`**: shows a summary after copy completes.
-- **`WorktreeState`**: replaced old ignored-files state fields with `agentContextCopyResult`.
-- **`WorktreeViewModel`**: simplified; delegates context detection and copying to `ClaudeCodeContextService`.
+- **`ClaudeCodeContextService`**: lists Claude session JSONL files for known repository worktrees under `~/.claude/projects/<key>/` and extracts session titles, ids, source paths, and modification times.
+- **`ClaudeSessionInfo`**: model for a discovered Claude session.
+- **`WorktreeState`**: tracks Claude sessions, session loading state, and session loading errors alongside worktree state.
+- **`WorktreeViewModel`**: refreshes Claude sessions after worktrees load and delegates session discovery to `ClaudeCodeContextService`.
+- **`MyToolWindow`**: shows a collapsible `Claude Sessions` section and resumes sessions in a terminal with `claude --resume <session-id> --fork-session`.
 
 ### Key behaviours
 
-- Session history copy is opt-in (unchecked by default) because sessions may contain secrets and local paths.
-- Session history options include sessions from all known worktrees for the repository and identify each session's source worktree.
-- Session history is skipped rather than overwritten if the destination already exists.
-- `.claude/` copy excludes `settings.local.json`, `.env*`, and any path component matching `local`, `private`, `secret`, `secrets`, `token`, `tokens`, `credential`, or `credentials`.
-- Session history copy is skipped on Windows (path encoding differs).
-- Symlinks are not followed during copy to prevent root escapes.
+- Sessions from the current project are sorted before sessions from other known worktrees, then by most recent modification time.
+- Resume validates that the session id is a UUID before passing it to the terminal command.
+- Resume uses Claude Code's native forked resume instead of copying or rewriting session files.
+- Session discovery returns no sessions on Windows because Claude Code's project-path encoding differs there.
