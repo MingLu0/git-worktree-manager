@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerMoveFilter
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
+import com.purringlabs.gitworktree.gitworktreemanager.models.ClaudeSessionInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.NoRepositoryCtaEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.OpenWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.WorktreeInfo
@@ -50,10 +52,9 @@ import com.purringlabs.gitworktree.gitworktreemanager.services.NoRepositoryUiHel
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryService
 import com.purringlabs.gitworktree.gitworktreemanager.services.TelemetryServiceImpl
 import com.purringlabs.gitworktree.gitworktreemanager.services.UiErrorMapper
-import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.AgentContextCopyDialog
-import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.AgentContextCopyResultDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.ErrorDetailsDialog
 import com.purringlabs.gitworktree.gitworktreemanager.ui.dialogs.RemoteBranchSelectionDialog
+import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import git4idea.repo.GitRepositoryManager
 import com.purringlabs.gitworktree.gitworktreemanager.viewmodel.WorktreeViewModel
 import git4idea.repo.GitRepository
@@ -69,6 +70,7 @@ import org.jetbrains.jewel.ui.component.Text
 import java.awt.Cursor
 import java.awt.Frame
 import java.io.File
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.UUID
 import javax.swing.JProgressBar
@@ -145,6 +147,26 @@ private fun WorktreeManagerContent(project: Project) {
 
     val currentProjectBasePath = remember(project) { project.basePath }
 
+    val onResumeSession = remember(project) { { session: ClaudeSessionInfo ->
+        try {
+            val widget = TerminalToolWindowManager.getInstance(project).createLocalShellWidget(
+                project.basePath ?: session.sourceProjectPath.toString(),
+                "Claude: ${session.title}",
+                true,
+                false
+            )
+            widget.executeCommand("claude --resume ${session.sessionId} --fork-session")
+        } catch (error: Exception) {
+            ApplicationManager.getApplication().invokeLater {
+                Messages.showErrorDialog(
+                    project,
+                    "Failed to resume Claude session: ${error.message ?: error.javaClass.simpleName}",
+                    "Resume Session"
+                )
+            }
+        }
+    } }
+
     WorktreeListContent(
         state = viewModel.state,
         currentProjectBasePath = currentProjectBasePath,
@@ -175,36 +197,12 @@ private fun WorktreeManagerContent(project: Project) {
                 return@WorktreeListContent
             }
 
-            // Folder-exists and branch-exists prompting are handled upfront (right after entering name/branch).
-
-            val gitWorktreeService = GitWorktreeService.getInstance(project)
-            val destinationPath = Paths.get(gitWorktreeService.getWorktreePath(repository, name))
-            val worktreePaths = viewModel.state.worktrees.map { Paths.get(it.path) }
-            val detectedOptions = detectAgentContextOptionsInBackground(
-                project = project,
-                service = claudeCodeContextService,
-                sourceRepoPath = Paths.get(repository.root.path),
-                destinationWorktreePath = destinationPath,
-                repoWorktreePaths = worktreePaths
-            )
-            val selectedAgentContextOptions = if (detectedOptions.isNotEmpty()) {
-                val dialog = AgentContextCopyDialog(project, detectedOptions, Paths.get(repository.root.path))
-                if (dialog.showAndGet()) dialog.selectedOptions() else detectedOptions.map { it.copy(selected = false) }
-            } else {
-                emptyList()
-            }
-
-            viewModel.createWorktreeWithAgentContext(
-                worktreeName = name,
+            viewModel.createWorktree(
+                name = name,
                 branchName = branch,
-                selectedOptions = selectedAgentContextOptions,
-                onSuccess = { createResult, copyResult ->
+                onSuccess = { createResult ->
                     ApplicationManager.getApplication().invokeLater {
-                        // Open the worktree in a new window
                         ProjectUtil.openOrImport(File(createResult.path).toPath(), project, true)
-                        copyResult
-                            ?.takeIf { it.hasEntries }
-                            ?.let { AgentContextCopyResultDialog(project, it).show() }
                         Messages.showInfoMessage(
                             project,
                             if (createResult.created) {
@@ -564,7 +562,8 @@ private fun WorktreeManagerContent(project: Project) {
                 Messages.getWarningIcon()
             )
             result == Messages.YES
-        }
+        },
+        onResumeSession = onResumeSession
     )
 }
 
@@ -661,38 +660,6 @@ private fun listWorktreesInBackground(project: Project, repository: GitRepositor
     }
 }
 
-private fun detectAgentContextOptionsInBackground(
-    project: Project,
-    service: ClaudeCodeContextService,
-    sourceRepoPath: java.nio.file.Path,
-    destinationWorktreePath: java.nio.file.Path,
-    repoWorktreePaths: List<java.nio.file.Path>
-): List<com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption> {
-    return try {
-        ProgressManager.getInstance().runProcessWithProgressSynchronously(
-            ThrowableComputable {
-                service.detectCopyOptions(
-                    sourceRepoPath = sourceRepoPath,
-                    destinationWorktreePath = destinationWorktreePath,
-                    repoWorktreePaths = repoWorktreePaths
-                )
-            },
-            "Detecting Claude Code context...",
-            true,
-            project
-        )
-    } catch (e: ProcessCanceledException) {
-        emptyList()
-    } catch (e: Exception) {
-        Messages.showWarningDialog(
-            project,
-            "Failed to detect Claude Code context. The worktree will be created without copying agent context.\n\n${e.message ?: e.javaClass.simpleName}",
-            "Claude Context Detection Failed"
-        )
-        emptyList()
-    }
-}
-
 private fun openOrFocusWorktree(
     currentProject: Project,
     worktreePath: String,
@@ -766,7 +733,8 @@ private fun WorktreeListContent(
     onRequestBranchName: (defaultName: String) -> String?,
     onValidateWorktreeName: (name: String) -> String?,
     onValidateBranchName: (branchName: String) -> String?,
-    onConfirmDelete: (WorktreeInfo) -> Boolean
+    onConfirmDelete: (WorktreeInfo) -> Boolean,
+    onResumeSession: (ClaudeSessionInfo) -> Unit
 ) {
     val isBusy = state.isCreating || state.deletingWorktreePath != null
     val statusText = when {
@@ -829,7 +797,17 @@ private fun WorktreeListContent(
             }
         }
 
+        // Claude Sessions (collapsible)
+        ClaudeSessionsSection(
+            sessions = state.sessions,
+            isLoading = state.isLoadingSessions,
+            error = state.sessionsError,
+            currentProjectBasePath = currentProjectBasePath,
+            onResumeSession = onResumeSession
+        )
+
         // Error message
+
         state.error?.let { error ->
             Text(
                 text = error,
@@ -1107,6 +1085,97 @@ private fun WorktreeItem(
                                 text = tooltipText,
                                 fontWeight = FontWeight.Light
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Collapsible section listing Claude Code sessions across all worktrees.
+ */
+@Composable
+private fun ClaudeSessionsSection(
+    sessions: List<ClaudeSessionInfo>,
+    isLoading: Boolean,
+    error: String?,
+    currentProjectBasePath: String?,
+    onResumeSession: (ClaudeSessionInfo) -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val borderColor = if (isSystemInDarkTheme()) Color(0x33FFFFFF) else Color(0x22000000)
+    val backgroundColor = if (isSystemInDarkTheme()) Color(0x0AFFFFFF) else Color(0x06000000)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+            .background(backgroundColor, RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { expanded = !expanded })
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Claude Sessions",
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = if (expanded) "▲" else "▼",
+                fontWeight = FontWeight.Light
+            )
+        }
+
+        if (expanded) {
+            when {
+                isLoading -> Text("Loading sessions…", fontWeight = FontWeight.Light)
+                error != null -> Text(
+                    text = error,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(8.dp)
+                )
+                sessions.isEmpty() -> Text("No Claude sessions found.", fontWeight = FontWeight.Light)
+                else -> LazyColumn(
+                    modifier = Modifier.heightIn(max = 240.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(sessions) { session ->
+                        val isCurrent = session.sourceProjectPath.toString() == currentProjectBasePath
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = session.title,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = buildString {
+                                        append(session.sourceProjectPath.fileName?.toString() ?: session.sourceProjectPath.toString())
+                                        if (isCurrent) append(" (current)")
+                                    },
+                                    fontWeight = FontWeight.Light
+                                )
+                            }
+                            OutlinedButton(onClick = { onResumeSession(session) }) {
+                                Text("Resume")
+                            }
                         }
                     }
                 }

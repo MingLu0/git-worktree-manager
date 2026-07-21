@@ -1,0 +1,5 @@
+<!-- Optional terminal-plugin integration: loaded only when org.jetbrains.plugins.terminal is present. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+    </extensions>
+</idea-plugin>

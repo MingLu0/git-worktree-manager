@@ -4,12 +4,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.intellij.openapi.project.Project
-import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyOption
-import com.purringlabs.gitworktree.gitworktreemanager.models.AgentContextCopyResult
+import com.purringlabs.gitworktree.gitworktreemanager.models.ClaudeSessionInfo
 import com.purringlabs.gitworktree.gitworktreemanager.repository.WorktreeRepositoryContract
 import com.purringlabs.gitworktree.gitworktreemanager.services.ClaudeCodeContextService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.nio.file.Path
 
 /**
  * ViewModel for managing worktree UI state and operations
@@ -42,6 +42,7 @@ class WorktreeViewModel(
                         worktrees = worktrees,
                         isLoading = false
                     )
+                    refreshClaudeSessions()
                 }
                 .onFailure { error ->
                     state = state.copy(
@@ -49,6 +50,25 @@ class WorktreeViewModel(
                         isLoading = false
                     )
                 }
+        }
+    }
+
+    /**
+     * Refreshes the list of Claude Code sessions across all worktrees.
+     */
+    fun refreshClaudeSessions() {
+        coroutineScope.launch {
+            state = state.copy(isLoadingSessions = true, sessionsError = null)
+            try {
+                val worktreePaths = state.worktrees.map { Path.of(it.path) }
+                val sessions = claudeCodeContextService.listSessions(worktreePaths)
+                state = state.copy(sessions = sessions, isLoadingSessions = false)
+            } catch (error: Exception) {
+                state = state.copy(
+                    sessionsError = error.message ?: "Failed to load Claude sessions",
+                    isLoadingSessions = false
+                )
+            }
         }
     }
 
@@ -147,44 +167,6 @@ class WorktreeViewModel(
                     }
             } finally {
                 state = state.copy(deletingWorktreePath = null)
-            }
-        }
-    }
-
-    /**
-     * Creates a new worktree and optionally copies selected Claude Code context.
-     * @param worktreeName Name for the worktree directory
-     * @param branchName Name of the branch to create/checkout
-     * @param selectedOptions Claude context options to copy
-     * @param onSuccess Callback invoked with the worktree path and copy result on success
-     * @param onError Callback invoked with error message on failure
-     */
-    fun createWorktreeWithAgentContext(
-        worktreeName: String,
-        branchName: String,
-        createNewBranch: Boolean = true,
-        selectedOptions: List<AgentContextCopyOption>,
-        onSuccess: (com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeResult, AgentContextCopyResult?) -> Unit,
-        onError: (Throwable) -> Unit
-    ) {
-        coroutineScope.launch {
-            state = state.copy(isCreating = true, error = null)
-            try {
-                repository.createWorktree(worktreeName, branchName, createNewBranch)
-                    .onSuccess { result ->
-                        val copyResult = if (selectedOptions.any { it.selected }) {
-                            claudeCodeContextService.copySelectedOptions(selectedOptions)
-                        } else {
-                            null
-                        }
-                        refreshWorktrees()
-                        onSuccess(result, copyResult)
-                    }
-                    .onFailure { error ->
-                        onError(error)
-                    }
-            } finally {
-                state = state.copy(isCreating = false)
             }
         }
     }
