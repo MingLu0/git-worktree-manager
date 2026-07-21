@@ -45,7 +45,7 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Resume Claude Code sessions across worktrees via native fork-and-resume</li>
+              <li>Resume Claude Code sessions across worktrees with one click</li>
             </ul>
 """.trimIndent()
     }
