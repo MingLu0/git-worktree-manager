@@ -87,6 +87,8 @@ private fun showOperationError(project: Project, error: Throwable, operation: St
     ).show()
 }
 
+private fun isValidClaudeSessionId(id: String): Boolean = runCatching { UUID.fromString(id) }.isSuccess
+
 private fun findValidRepository(project: Project): GitRepository? {
     return GitRepositoryManager.getInstance(project)
         .repositories
@@ -147,7 +149,17 @@ private fun WorktreeManagerContent(project: Project) {
 
     val currentProjectBasePath = remember(project) { project.basePath }
 
-    val onResumeSession = remember(project) { { session: ClaudeSessionInfo ->
+    val onResumeSession = remember(project) { resume@{ session: ClaudeSessionInfo ->
+        if (!isValidClaudeSessionId(session.sessionId)) {
+            ApplicationManager.getApplication().invokeLater {
+                Messages.showErrorDialog(
+                    project,
+                    "Invalid Claude session ID: ${session.sessionId}",
+                    "Resume Session"
+                )
+            }
+            return@resume
+        }
         try {
             val widget = TerminalToolWindowManager.getInstance(project).createLocalShellWidget(
                 project.basePath ?: session.sourceProjectPath.toString(),

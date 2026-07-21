@@ -31,7 +31,7 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends optional="true" config-file="compose.xml">com.intellij.modules.compose</depends>
     <depends optional="true" config-file="kotlin.xml">org.jetbrains.kotlin</depends>
-    <depends optional="true" config-file="terminal.xml">org.jetbrains.plugins.terminal</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
     <depends>Git4Idea</depends>
     <resource-bundle>messages.MyMessageBundle</resource-bundle>
 
