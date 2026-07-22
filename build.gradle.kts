@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.25"
+version = "1.1.26"
 
 repositories {
     mavenCentral()
@@ -45,8 +45,8 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>resume Claude Code sessions natively</li>
-              <li>add AGENTS.md with CLAUDE.md symlink</li>
+              <li>Move Claude Sessions toggle to the create-actions row and right-align it</li>
+              <li>Give Claude session rows a card-style background with hover highlight for readability</li>
             </ul>
 """.trimIndent()
     }
