@@ -16,10 +16,11 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -990,16 +991,8 @@ private fun WorktreeItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerMoveFilter(
-                onEnter = {
-                    isHovered = true
-                    false
-                },
-                onExit = {
-                    isHovered = false
-                    false
-                }
-            )
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
             .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
             // Double-click to open (avoid accidental opens while selecting/copying)
             .pointerInput(Unit) {
@@ -1053,7 +1046,7 @@ private fun WorktreeItem(
             // and fade it in/out via alpha.
             val hintAlpha = if (isHovered) 1f else 0f
             Text(
-                text = "Tip: double-click row to open", 
+                text = "Tip: double-click row to open",
                 fontWeight = FontWeight.Light,
                 modifier = Modifier
                     .padding(top = 2.dp)
@@ -1074,16 +1067,8 @@ private fun WorktreeItem(
             Box(
                 modifier = Modifier
                     // Track hover on the container so we still get hover events when the button is disabled.
-                    .pointerMoveFilter(
-                        onEnter = {
-                            isDeleteHovered = true
-                            false
-                        },
-                        onExit = {
-                            isDeleteHovered = false
-                            false
-                        }
-                    )
+                    .onPointerEvent(PointerEventType.Enter) { isDeleteHovered = true }
+                    .onPointerEvent(PointerEventType.Exit) { isDeleteHovered = false }
             ) {
                 OutlinedButton(onClick = { if (deleteEnabled) onDelete() }, enabled = deleteEnabled) {
                     Text("Delete")
@@ -1184,16 +1169,8 @@ private fun ClaudeSessionItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerMoveFilter(
-                onEnter = {
-                    isHovered = true
-                    false
-                },
-                onExit = {
-                    isHovered = false
-                    false
-                }
-            )
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
             .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
             .background(rowBackground, RoundedCornerShape(8.dp))
             .padding(8.dp),
