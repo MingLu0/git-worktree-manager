@@ -16,10 +16,11 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -754,6 +755,7 @@ private fun WorktreeListContent(
         state.deletingWorktreePath != null -> "Deleting worktree..."
         else -> null
     }
+    var sessionsExpanded by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -782,7 +784,10 @@ private fun WorktreeListContent(
         }
 
         // Create actions at the top
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             OutlinedButton(onClick = {
                 val rawName = onRequestWorktreeName()
                 if (!rawName.isNullOrBlank()) {
@@ -807,16 +812,27 @@ private fun WorktreeListContent(
             ) {
                 Text("Create from Remote Branch")
             }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            OutlinedButton(
+                onClick = { sessionsExpanded = !sessionsExpanded },
+                enabled = !isBusy
+            ) {
+                Text("Claude Sessions ${if (sessionsExpanded) "▲" else "▼"}")
+            }
         }
 
-        // Claude Sessions (collapsible)
-        ClaudeSessionsSection(
-            sessions = state.sessions,
-            isLoading = state.isLoadingSessions,
-            error = state.sessionsError,
-            currentProjectBasePath = currentProjectBasePath,
-            onResumeSession = onResumeSession
-        )
+        // Claude Sessions panel
+        if (sessionsExpanded) {
+            ClaudeSessionsPanel(
+                sessions = state.sessions,
+                isLoading = state.isLoadingSessions,
+                error = state.sessionsError,
+                currentProjectBasePath = currentProjectBasePath,
+                onResumeSession = onResumeSession
+            )
+        }
 
         // Error message
 
@@ -975,16 +991,8 @@ private fun WorktreeItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerMoveFilter(
-                onEnter = {
-                    isHovered = true
-                    false
-                },
-                onExit = {
-                    isHovered = false
-                    false
-                }
-            )
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
             .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
             // Double-click to open (avoid accidental opens while selecting/copying)
             .pointerInput(Unit) {
@@ -1038,7 +1046,7 @@ private fun WorktreeItem(
             // and fade it in/out via alpha.
             val hintAlpha = if (isHovered) 1f else 0f
             Text(
-                text = "Tip: double-click row to open", 
+                text = "Tip: double-click row to open",
                 fontWeight = FontWeight.Light,
                 modifier = Modifier
                     .padding(top = 2.dp)
@@ -1059,16 +1067,8 @@ private fun WorktreeItem(
             Box(
                 modifier = Modifier
                     // Track hover on the container so we still get hover events when the button is disabled.
-                    .pointerMoveFilter(
-                        onEnter = {
-                            isDeleteHovered = true
-                            false
-                        },
-                        onExit = {
-                            isDeleteHovered = false
-                            false
-                        }
-                    )
+                    .onPointerEvent(PointerEventType.Enter) { isDeleteHovered = true }
+                    .onPointerEvent(PointerEventType.Exit) { isDeleteHovered = false }
             ) {
                 OutlinedButton(onClick = { if (deleteEnabled) onDelete() }, enabled = deleteEnabled) {
                     Text("Delete")
@@ -1106,19 +1106,18 @@ private fun WorktreeItem(
 }
 
 /**
- * Collapsible section listing Claude Code sessions across all worktrees.
+ * Panel listing Claude Code sessions across all worktrees.
  */
 @Composable
-private fun ClaudeSessionsSection(
+private fun ClaudeSessionsPanel(
     sessions: List<ClaudeSessionInfo>,
     isLoading: Boolean,
     error: String?,
     currentProjectBasePath: String?,
     onResumeSession: (ClaudeSessionInfo) -> Unit
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
     val borderColor = if (isSystemInDarkTheme()) Color(0x33FFFFFF) else Color(0x22000000)
-    val backgroundColor = if (isSystemInDarkTheme()) Color(0x0AFFFFFF) else Color(0x06000000)
+    val backgroundColor = if (isSystemInDarkTheme()) Color(0x0AFFFFFF) else Color(0x0A000000)
 
     Column(
         modifier = Modifier
@@ -1128,70 +1127,75 @@ private fun ClaudeSessionsSection(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { expanded = !expanded })
-                },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        when {
+            isLoading -> Text("Loading sessions…", fontWeight = FontWeight.Light)
+            error != null -> Text(
+                text = error,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(8.dp)
+            )
+            sessions.isEmpty() -> Text("No Claude sessions found.", fontWeight = FontWeight.Light)
+            else -> LazyColumn(
+                modifier = Modifier.heightIn(max = 240.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(sessions) { session ->
+                    ClaudeSessionItem(
+                        session = session,
+                        isCurrent = session.sourceProjectPath.toString() == currentProjectBasePath,
+                        onResume = { onResumeSession(session) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Single Claude Code session row with a subtle card and hover highlight.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun ClaudeSessionItem(
+    session: ClaudeSessionInfo,
+    isCurrent: Boolean,
+    onResume: () -> Unit
+) {
+    var isHovered by remember { mutableStateOf(false) }
+    val baseBackground = if (isSystemInDarkTheme()) Color(0x0AFFFFFF) else Color(0x06000000)
+    val hoverBackground = if (isSystemInDarkTheme()) Color(0x22FFFFFF) else Color(0x14000000)
+    val rowBackground = if (isHovered) hoverBackground else baseBackground
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
+            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .background(rowBackground, RoundedCornerShape(8.dp))
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
-                text = "Claude Sessions",
-                fontWeight = FontWeight.Bold
+                text = session.title,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
             Text(
-                text = if (expanded) "▲" else "▼",
+                text = buildString {
+                    append(session.sourceProjectPath.fileName?.toString() ?: session.sourceProjectPath.toString())
+                    if (isCurrent) append(" (current)")
+                },
                 fontWeight = FontWeight.Light
             )
         }
-
-        if (expanded) {
-            when {
-                isLoading -> Text("Loading sessions…", fontWeight = FontWeight.Light)
-                error != null -> Text(
-                    text = error,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(8.dp)
-                )
-                sessions.isEmpty() -> Text("No Claude sessions found.", fontWeight = FontWeight.Light)
-                else -> LazyColumn(
-                    modifier = Modifier.heightIn(max = 240.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    items(sessions) { session ->
-                        val isCurrent = session.sourceProjectPath.toString() == currentProjectBasePath
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Text(
-                                    text = session.title,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = buildString {
-                                        append(session.sourceProjectPath.fileName?.toString() ?: session.sourceProjectPath.toString())
-                                        if (isCurrent) append(" (current)")
-                                    },
-                                    fontWeight = FontWeight.Light
-                                )
-                            }
-                            OutlinedButton(onClick = { onResumeSession(session) }) {
-                                Text("Resume")
-                            }
-                        }
-                    }
-                }
-            }
+        OutlinedButton(onClick = onResume) {
+            Text("Resume")
         }
     }
 }

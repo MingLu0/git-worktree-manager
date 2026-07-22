@@ -11,7 +11,7 @@ The earlier Claude Code context-copy flow was replaced by native Claude Code ses
 - **`ClaudeSessionInfo`**: model for a discovered Claude session.
 - **`WorktreeState`**: tracks Claude sessions, session loading state, and session loading errors alongside worktree state.
 - **`WorktreeViewModel`**: refreshes Claude sessions after worktrees load and delegates session discovery to `ClaudeCodeContextService`.
-- **`MyToolWindow`**: shows a collapsible `Claude Sessions` section and resumes sessions in a terminal with `claude --resume <session-id> --fork-session`.
+- **`MyToolWindow`**: shows collapsible `Claude Sessions` UI and resumes sessions in a terminal with `claude --resume <session-id> --fork-session`.
 
 ### Key behaviours
 

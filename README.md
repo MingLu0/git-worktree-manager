@@ -56,7 +56,7 @@ https://plugins.jetbrains.com/plugin/29905-git-worktree-manager?noRedirect=true
 
 ### Resuming Claude Code Sessions
 
-1. Expand the `Claude Sessions` section in the tool window
+1. Click the `Claude Sessions` toggle in the tool window
 2. Find a session from the current project or another repository worktree
 3. Click `Resume`
 4. The plugin opens a terminal and runs `claude --resume <session-id> --fork-session`

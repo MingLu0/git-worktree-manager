@@ -34,8 +34,9 @@ JetBrains plugin for managing Git worktrees, with Claude Code session resume.
 
 - This repo has a no-mistakes gate (remote `no-mistakes`). Create feature/fix PRs through it:
   1. Commit work on a feature branch
-  2. `git push no-mistakes <branch>` — the gate runs review → test → document → lint → push → PR → CI in an isolated worktree and opens the PR when everything is green
-  3. Monitor non-interactively: `no-mistakes axi status` (or `no-mistakes` for the TUI)
+  2. Run `no-mistakes update` to ensure the latest gate version is installed before pushing
+  3. `git push no-mistakes <branch>` — the gate runs review → test → document → lint → push → PR → CI in an isolated worktree and opens the PR when everything is green
+  4. Monitor non-interactively: `no-mistakes axi status` (or `no-mistakes` for the TUI)
 - Don't push feature branches directly to `origin` for PRs — let the gate validate first.
 - Exception: release PRs (`release/vX.Y.Z`) follow `RELEASE_RUNBOOK.md` — pushed to `origin` directly, since they rely on the auto-change-notes bot + tag-driven publishing.
 

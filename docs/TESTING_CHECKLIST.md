@@ -11,13 +11,13 @@
 
 1. Use a repo with Claude Code session history under `~/.claude/projects/` for the current worktree and at least one other known worktree.
 2. Open the `Git Worktrees` tool window.
-3. Expand `Claude Sessions`.
+3. Click `Claude Sessions`.
 4. Verify sessions are listed with titles and source worktree names.
 5. Verify sessions from the current project are ordered before sessions from other worktrees.
 
 ## Resume a Claude session
 
-1. Expand `Claude Sessions`.
+1. Click `Claude Sessions`.
 2. Click `Resume` for a session.
 3. Verify a terminal tab opens for the project.
 4. Verify it runs `claude --resume <session-id> --fork-session`.
