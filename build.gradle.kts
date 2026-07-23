@@ -7,7 +7,42 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.26"
+version = "1.1.27"
+
+val generatedVersionDir = layout.buildDirectory.dir("generated/version")
+
+val generateVersionFile by tasks.registering {
+    val pluginVersion = project.version.toString()
+    val outputFile = generatedVersionDir.map { it.file("com/purringlabs/gitworktree/gitworktreemanager/BuildInfo.kt") }
+    inputs.property("pluginVersion", pluginVersion)
+    outputs.file(outputFile)
+    doLast {
+        outputFile.get().asFile.parentFile.mkdirs()
+        outputFile.get().asFile.writeText(
+            """
+            package com.purringlabs.gitworktree.gitworktreemanager
+
+            internal object BuildInfo {
+                const val PLUGIN_VERSION: String = "$pluginVersion"
+            }
+            """.trimIndent()
+        )
+    }
+}
+
+sourceSets {
+    main {
+        kotlin.srcDir(generatedVersionDir)
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    dependsOn(generateVersionFile)
+}
+
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
+    source(generatedVersionDir)
+}
 
 repositories {
     mavenCentral()
@@ -45,8 +80,8 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Move Claude Sessions toggle to the create-actions row and right-align it</li>
-              <li>Give Claude session rows a card-style background with hover highlight for readability</li>
+              <li>Fix telemetry pluginVersion reporting so New Relic events carry the real version instead of "unknown"</li>
+              <li>Update marketplace description and README to highlight Claude Code session resume as a core differentiator</li>
             </ul>
 """.trimIndent()
     }
@@ -73,12 +108,6 @@ tasks {
     withType<JavaCompile> {
         sourceCompatibility = "21"
         targetCompatibility = "21"
-    }
-
-    withType<Jar> {
-        manifest {
-            attributes["Implementation-Version"] = project.version.toString()
-        }
     }
 }
 

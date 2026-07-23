@@ -1,19 +1,19 @@
 # Git Worktree Manager
 
-A powerful IntelliJ IDEA/Android Studio plugin that simplifies Git worktree management, allowing you to work on multiple features simultaneously without the overhead of switching branches or maintaining multiple clones.
+A powerful IntelliJ IDEA/Android Studio plugin that makes Git worktrees practical for AI-assisted development. Run Claude Code across parallel branches without losing context: give each session its own worktree, then view and resume every session from the IDE in one click.
 
 ## Features
 
+- **Resume Claude Code Sessions**: View and resume Claude Code sessions across all repository worktrees, sorted by recency — one click opens a terminal and runs `claude --resume <session-id> --fork-session`
 - **List Worktrees**: View all worktrees in your repository with their branch names, paths, and commit information
 - **Create Worktrees**: Create new worktrees with a simple dialog interface
-- **Resume Claude Code Sessions**: View and resume Claude Code sessions across all repository worktrees
 - **Auto-Open in New Window**: Automatically opens newly created worktrees in a separate IDE window
 - **Delete Worktrees**: Remove worktrees with one click (with confirmation dialog)
 - **Modern UI**: Built with Jetpack Compose for a native, responsive user experience
 
 ## Why Use Git Worktrees?
 
-Git worktrees allow you to check out multiple branches from the same repository into separate directories. This is especially useful for Android developers who need to:
+Git worktrees allow you to check out multiple branches from the same repository into separate directories. This is especially powerful when you use AI agents like Claude Code: each branch can keep its own session context, and branch switching no longer resets the agent. It's also useful for Android developers who need to:
 
 - Work on multiple features simultaneously
 - Quickly switch between bug fixes and feature development

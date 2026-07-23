@@ -13,17 +13,20 @@
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
     <description><![CDATA[
-        Simplify Git worktree management in Android Studio and IntelliJ IDEA.<br>
+        Run Claude Code across multiple Git worktrees — without losing context.<br>
         <br>
-        Create, list, and delete Git worktrees with just a few clicks. Perfect for Android developers who need to work on multiple features simultaneously without the overhead of switching branches or maintaining multiple clones.<br>
+        Git Worktree Manager creates, lists, and deletes worktrees in a few clicks, and surfaces every Claude Code session across all worktrees of your repo — resumable in one click, right in the IDE terminal.<br>
+        <br>
+        <b>Why Claude Code + worktrees?</b><br>
+        AI agents make parallel feature branches practical, but branch switching kills agent context. Give each Claude session its own worktree and keep every session discoverable and resumable from the IDE.<br>
         <br>
         <b>Features:</b><br>
             <ul>
-                <li>Create new worktrees with automatic branch creation</li>
-                <li>View all worktrees in a convenient tool window</li>
-                <li>View and resume Claude Code sessions across all worktrees with one click</li>
+                <li>View all Claude Code sessions across every worktree, sorted by recency</li>
+                <li>Resume any Claude session in the IDE terminal with one click</li>
+                <li>Create worktrees with automatic branch creation</li>
+                <li>Auto-open worktrees in new IDE windows</li>
                 <li>Delete worktrees with one click</li>
-                <li>Automatically open worktrees in new IDE windows</li>
             </ul>
     ]]></description>
 

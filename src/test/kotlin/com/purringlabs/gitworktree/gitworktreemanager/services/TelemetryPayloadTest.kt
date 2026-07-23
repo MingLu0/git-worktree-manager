@@ -10,6 +10,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class TelemetryPayloadTest : LightPlatformTestCase() {
 
@@ -83,6 +85,14 @@ class TelemetryPayloadTest : LightPlatformTestCase() {
 
         assertEquals("install-123", event.getValue("install_id").jsonPrimitive.content)
         assertEquals("session-456", event.getValue("session_id").jsonPrimitive.content)
+    }
+
+    fun testPluginVersionIsNotUnknown() {
+        val getPluginVersion = TelemetryServiceImpl::class.java.getDeclaredMethod("getPluginVersion")
+        getPluginVersion.isAccessible = true
+        val version = getPluginVersion.invoke(TelemetryServiceImpl()) as String
+        assertNotEquals("unknown", version)
+        assertTrue(version.isNotBlank())
     }
 
     private fun testTelemetryContext(): TelemetryContext = TelemetryContext(
