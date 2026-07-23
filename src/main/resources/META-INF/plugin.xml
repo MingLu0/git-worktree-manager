@@ -22,7 +22,7 @@
         <br>
         <b>Features:</b><br>
             <ul>
-                <li>View all Claude Code sessions across every worktree, sorted by recency</li>
+                <li>View all Claude Code sessions across every worktree, with current-project sessions first and then sorted by recency</li>
                 <li>Resume any Claude session in the IDE terminal with one click</li>
                 <li>Create worktrees with automatic branch creation</li>
                 <li>Auto-open worktrees in new IDE windows</li>

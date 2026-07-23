@@ -4,7 +4,7 @@ A powerful IntelliJ IDEA/Android Studio plugin that makes Git worktrees practica
 
 ## Features
 
-- **Resume Claude Code Sessions**: View and resume Claude Code sessions across all repository worktrees, sorted by recency — one click opens a terminal and runs `claude --resume <session-id> --fork-session`
+- **Resume Claude Code Sessions**: View and resume Claude Code sessions across all repository worktrees, with current-project sessions first and then sorted by recency — one click opens a terminal and runs `claude --resume <session-id> --fork-session`
 - **List Worktrees**: View all worktrees in your repository with their branch names, paths, and commit information
 - **Create Worktrees**: Create new worktrees with a simple dialog interface
 - **Auto-Open in New Window**: Automatically opens newly created worktrees in a separate IDE window
