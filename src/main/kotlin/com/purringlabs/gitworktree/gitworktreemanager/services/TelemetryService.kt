@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationNamesInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
+import com.purringlabs.gitworktree.gitworktreemanager.BuildInfo
 import com.purringlabs.gitworktree.gitworktreemanager.models.CreateWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.DeleteWorktreeEvent
 import com.purringlabs.gitworktree.gitworktreemanager.models.ErrorEvent
@@ -323,7 +324,7 @@ class TelemetryServiceImpl : TelemetryService, Disposable {
     }
 
     private fun getPluginVersion(): String {
-        return TelemetryServiceImpl::class.java.`package`?.implementationVersion ?: "unknown"
+        return BuildInfo.PLUGIN_VERSION
     }
 
     private object ApiKeyHolder {
