@@ -28,7 +28,7 @@ JetBrains plugin for managing Git worktrees, with Claude Code session resume.
 
 - `.intellijPlatform/self-update.lock` is tracked but churns locally — don't commit it
 - `version` in `build.gradle.kts` must exactly match the release tag (`vX.Y.Z`) or CI publish fails
-- Release: `RELEASE_RUNBOOK.md` (canonical) + `.opencode/instructions/release-workflow.md`
+- Release: `RELEASE_RUNBOOK.md` (canonical)
 
 ## Pull Requests — use no-mistakes
 
