@@ -80,10 +80,12 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Fix branch deletion failing after removing the worktree the project was opened from</li>
-              <li>Stop reporting cancelled create/delete operations as failures</li>
-              <li>Mask local usernames in all telemetry error fields</li>
-              <li>Report plugin exceptions to JetBrains Marketplace via the IDE error reporter</li>
+              <li>drop no-mistakes gate instructions and fix stale AGENTS.md claims</li>
+            </ul>
+            <b>Fixes</b>
+            <ul>
+              <li>worktree delete failures and username leaks in telemetry</li>
+              <li>register JetBrains Marketplace error handler</li>
             </ul>
 """.trimIndent()
     }
