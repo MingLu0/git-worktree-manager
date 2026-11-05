@@ -121,7 +121,7 @@ class WorktreeRepository(private val project: Project) : WorktreeRepositoryContr
 
         val deleteResult = result.getOrNull()
         val structuredError = TelemetryErrorMapper.mapToStructuredError(result.exceptionOrNull())
-            ?: deleteResult?.branchDeleteError
+            ?: deleteResult?.branchDeleteError?.let(TelemetryErrorMapper::sanitize)
 
         telemetryService.recordOperation(
             DeleteWorktreeEvent(

@@ -7,16 +7,20 @@ import com.purringlabs.gitworktree.gitworktreemanager.models.StructuredError
 
 object TelemetryErrorMapper {
 
+    private const val MAX_GIT_ERROR_OUTPUT_LENGTH = 500
+    private val unixHomeDirectoryPattern = Regex("(/Users|/home)/[^/\\\\\\s'\"]+")
+    private val windowsHomeDirectoryPattern = Regex("([A-Za-z]:\\\\Users)\\\\[^\\\\/\\s'\"]+")
+
     fun mapToStructuredError(throwable: Throwable?): StructuredError? {
         if (throwable == null) return null
 
-        return when (throwable) {
+        val unsanitizedError = when (throwable) {
             is WorktreeOperationException -> StructuredError(
                 errorType = inferErrorType(throwable),
                 errorMessage = throwable.message ?: "Unknown error",
                 gitCommand = throwable.gitCommand,
                 gitExitCode = throwable.gitExitCode,
-                gitErrorOutput = sanitizeGitOutput(throwable.gitErrorOutput),
+                gitErrorOutput = throwable.gitErrorOutput,
                 stackTrace = null
             )
             is NoRepositoryException -> StructuredError(
@@ -36,6 +40,16 @@ object TelemetryErrorMapper {
                 stackTrace = throwable.stackTraceToString().lines().take(5).joinToString("\n")
             )
         }
+        return sanitize(unsanitizedError)
+    }
+
+    fun sanitize(error: StructuredError): StructuredError {
+        return error.copy(
+            errorMessage = maskHomeDirectories(error.errorMessage),
+            gitCommand = error.gitCommand?.let(::maskHomeDirectories),
+            gitErrorOutput = error.gitErrorOutput?.let { maskHomeDirectories(it).take(MAX_GIT_ERROR_OUTPUT_LENGTH) },
+            stackTrace = error.stackTrace?.let(::maskHomeDirectories)
+        )
     }
 
     private fun inferErrorType(exception: WorktreeOperationException): String {
@@ -49,12 +63,9 @@ object TelemetryErrorMapper {
         }
     }
 
-    private fun sanitizeGitOutput(output: String?): String? {
-        if (output == null) return null
-
-        return output
-            .replace(Regex("/Users/[^/]+/"), "/Users/<username>/")
-            .replace(Regex("C:\\\\Users\\\\[^\\\\]+\\\\"), "C:\\Users\\<username>\\")
-            .take(500)
+    private fun maskHomeDirectories(text: String): String {
+        return text
+            .replace(unixHomeDirectoryPattern, "$1/<username>")
+            .replace(windowsHomeDirectoryPattern, "$1\\\\<username>")
     }
 }
