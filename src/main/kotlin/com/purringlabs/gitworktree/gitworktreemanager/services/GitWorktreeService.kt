@@ -17,6 +17,7 @@ import git4idea.repo.GitRepository
 import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.annotations.VisibleForTesting
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 
 @Service(Service.Level.PROJECT)
 class GitWorktreeService(private val project: Project) {
@@ -102,6 +103,10 @@ class GitWorktreeService(private val project: Project) {
                     )
                 )
             }
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(
                 WorktreeOperationException(
@@ -177,6 +182,16 @@ class GitWorktreeService(private val project: Project) {
         worktreeHandler.addParameters("--force")
 
         return try {
+            val branchCommandDirectory = if (branchName.isNullOrBlank()) {
+                null
+            } else {
+                selectBranchCommandDirectory(
+                    repositoryRootPath = repository.root.path,
+                    removedWorktreePath = worktreePath,
+                    knownWorktreePaths = listWorktrees(repository).getOrNull().orEmpty().map { it.path }
+                )
+            }
+
             val worktreeResult = git.runCommand(worktreeHandler)
             if (!worktreeResult.success()) {
                 return Result.failure(
@@ -207,8 +222,8 @@ class GitWorktreeService(private val project: Project) {
 
             var branchDeleted = branchName.isNullOrBlank()
             var branchDeleteError: StructuredError? = null
-            if (!branchName.isNullOrBlank()) {
-                val deleteBranchHandler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+            if (!branchName.isNullOrBlank() && branchCommandDirectory != null) {
+                val deleteBranchHandler = GitLineHandler(project, File(branchCommandDirectory), GitCommand.BRANCH)
                 deleteBranchHandler.addParameters("-D", branchName)
                 val branchResult = git.runCommand(deleteBranchHandler)
                 val gitError = branchResult.errorOutputAsJoinedString
@@ -240,6 +255,10 @@ class GitWorktreeService(private val project: Project) {
                     branchDeleteError = branchDeleteError
                 )
             )
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(
                 WorktreeOperationException(
@@ -347,6 +366,22 @@ class GitWorktreeService(private val project: Project) {
     companion object {
         fun getInstance(project: Project): GitWorktreeService {
             return project.getService(GitWorktreeService::class.java)
+        }
+
+        @VisibleForTesting
+        internal fun selectBranchCommandDirectory(
+            repositoryRootPath: String,
+            removedWorktreePath: String,
+            knownWorktreePaths: List<String>
+        ): String {
+            val canonicalRemovedPath = FileUtil.toCanonicalPath(removedWorktreePath)
+            fun survivesRemoval(candidatePath: String): Boolean =
+                !FileUtil.isAncestor(canonicalRemovedPath, FileUtil.toCanonicalPath(candidatePath), false)
+
+            if (survivesRemoval(repositoryRootPath)) return repositoryRootPath
+            return knownWorktreePaths.firstOrNull { candidatePath ->
+                survivesRemoval(candidatePath) && File(candidatePath).isDirectory
+            } ?: repositoryRootPath
         }
     }
 }
