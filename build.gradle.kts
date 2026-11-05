@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.purringlabs.gitworktree"
-version = "1.1.27"
+version = "1.1.28"
 
 val generatedVersionDir = layout.buildDirectory.dir("generated/version")
 
@@ -80,8 +80,10 @@ intellijPlatform {
         changeNotes = """
             <b>What's new</b>
             <ul>
-              <li>Fix telemetry pluginVersion reporting so New Relic events carry the real version instead of "unknown"</li>
-              <li>Update marketplace description and README to highlight Claude Code session resume as a core differentiator</li>
+              <li>Fix branch deletion failing after removing the worktree the project was opened from</li>
+              <li>Stop reporting cancelled create/delete operations as failures</li>
+              <li>Mask local usernames in all telemetry error fields</li>
+              <li>Report plugin exceptions to JetBrains Marketplace via the IDE error reporter</li>
             </ul>
 """.trimIndent()
     }
